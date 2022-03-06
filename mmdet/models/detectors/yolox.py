@@ -53,6 +53,9 @@ class YOLOX(SingleStageDetector):
                  size_multiplier=32,
                  random_size_range=(15, 25),
                  random_size_interval=10,
+                 search_backbone=True,
+                 search_neck=False,
+                 search_head=False,
                  init_cfg=None):
         super(YOLOX, self).__init__(backbone, neck, bbox_head, train_cfg,
                                     test_cfg, pretrained, init_cfg)
@@ -63,6 +66,17 @@ class YOLOX(SingleStageDetector):
         self._random_size_interval = random_size_interval
         self._size_multiplier = size_multiplier
         self._progress_in_iter = 0
+        self.search_backbone = search_backbone
+        self.search_neck = search_neck
+        self.search_head = search_head
+        self.arch = 0
+
+    def set_arch(self, arch, **kwargs):
+        self.arch = arch
+        if self.search_backbone:
+            self.backbone.set_arch(self.arch)
+        if self.search_neck:
+            self.neck.set_arch(self.arch)
 
     def forward_train(self,
                       img,

@@ -1,4 +1,26 @@
 _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
+# checkpoint_config = dict(interval=interval)
+checkpoint_config = dict(type='CheckpointHook_nolog', interval=1)
+# runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
+runner = dict(type='EpochBasedRunnerSuper', max_epochs=5)
+log_config = dict(
+    interval=50,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        # dict(type='TensorboardLoggerHook')
+    ])
+find_unused_parameters=True
+
+optimizer = dict(
+    type='SGD',
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=5e-4,
+    nesterov=True,
+    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
+optimizer_config = dict(grad_clip=None) # 是啥
+
+panas_c_range = [16, 64]
 
 img_scale = (640, 640)
 
@@ -8,7 +30,11 @@ model = dict(
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.5),
+    backbone=dict(
+        type='CSPDarknet',
+        conv_cfg=dict(type='USConv2d'),
+        deepen_factor=0.33,
+        widen_factor=0.5),
     neck=dict(
         type='YOLOXPAFPN',
         in_channels=[128, 256, 512],
@@ -101,16 +127,7 @@ data = dict(
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 
-# optimizer
-# default 8 gpu
-optimizer = dict(
-    type='SGD',
-    lr=0.01,
-    momentum=0.9,
-    weight_decay=5e-4,
-    nesterov=True,
-    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-optimizer_config = dict(grad_clip=None)
+
 
 max_epochs = 300
 num_last_epochs = 15
@@ -129,7 +146,7 @@ lr_config = dict(
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05)
 
-runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
+
 
 custom_hooks = [
     dict(
@@ -147,7 +164,7 @@ custom_hooks = [
         momentum=0.0001,
         priority=49)
 ]
-checkpoint_config = dict(interval=interval)
+
 evaluation = dict(
     save_best='auto',
     # The evaluation interval is 'interval' when running epoch is
@@ -157,4 +174,4 @@ evaluation = dict(
     interval=interval,
     dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='bbox')
-log_config = dict(interval=50)
+

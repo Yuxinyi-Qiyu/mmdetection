@@ -32,7 +32,7 @@ class DarknetBottleneck(BaseModule):
     def __init__(self,
                  in_channels,
                  out_channels,
-                 expansion=0.5,
+                 expansion=0.5, # input=1.0
                  add_identity=True,
                  use_depthwise=False,
                  conv_cfg=None,
@@ -66,7 +66,7 @@ class DarknetBottleneck(BaseModule):
         out = self.conv1(x)
         out = self.conv2(out)
 
-        if self.add_identity:
+        if self.add_identity: # 是否有shorcut
             return out + identity
         else:
             return out
@@ -121,8 +121,8 @@ class CSPLayer(BaseModule):
             norm_cfg=norm_cfg,
             act_cfg=act_cfg)
         self.final_conv = ConvModule(
-            2 * mid_channels,
-            out_channels,
+            2 * mid_channels, #256*2
+            out_channels, #512
             1,
             conv_cfg=conv_cfg,
             norm_cfg=norm_cfg,
@@ -130,7 +130,7 @@ class CSPLayer(BaseModule):
 
         self.blocks = nn.Sequential(*[
             DarknetBottleneck(
-                mid_channels,
+                mid_channels,#256
                 mid_channels,
                 1.0,
                 add_identity,
