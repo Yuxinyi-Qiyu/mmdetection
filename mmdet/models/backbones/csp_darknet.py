@@ -8,7 +8,7 @@ from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from ..builder import BACKBONES
-from .usconv import sepc_conv, USsepc_conv, USConv2d, USLinear
+from .usconv import sepc_conv, USsepc_conv, USConv2d, USLinear, USBatchNorm2d
 from ..utils import CSPLayer
 
 
@@ -62,8 +62,8 @@ class Focus(nn.Module):
             ),
             dim=1,
         )
-        print("_____________")
-        print(x.size()) #torch.Size([8, 12, 320, 320])
+        # print("_____________")
+        # print(x.size()) #torch.Size([8, 12, 320, 320])
         return self.conv(x)
 
 
@@ -169,6 +169,7 @@ class CSPDarknet(BaseModule):
     """
     # From left to right:
     # in_channels, out_channels, num_blocks, add_identity, use_spp
+
     arch_settings = {
         'P5': [[64, 128, 3, True, False], [128, 256, 9, True, False],
                [256, 512, 9, True, False], [512, 1024, 3, False, True]],
@@ -176,6 +177,13 @@ class CSPDarknet(BaseModule):
                [256, 512, 9, True, False], [512, 768, 3, True, False],
                [768, 1024, 3, False, True]]
     }
+    # arch_settings = {
+    #     'P5': [[128, 256, 3, True, False], [256, 512, 9, True, False],
+    #            [512, 1024, 9, True, False], [1024, 2048, 3, False, True]],
+    #     'P6': [[64, 128, 3, True, False], [128, 256, 9, True, False],
+    #            [256, 512, 9, True, False], [512, 768, 3, True, False],
+    #            [768, 1024, 3, False, True]]
+    # }
 
     def __init__(self,
                  arch='P5',
@@ -342,9 +350,9 @@ class CSPDarknet(BaseModule):
                 darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[block_num].conv2.conv.out_channels = hidden_channel, mid_channel
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
 
-        for i, layer_name in enumerate(self.layers):
-            layer = getattr(self, layer_name)
-            print("i=" + str(i) + ":" + str(layer))
+        # for i, layer_name in enumerate(self.layers):
+        #     layer = getattr(self, layer_name)
+        #     print("i=" + str(i) + ":" + str(layer))
 
             '''
             # layer.conv.conv.in_channels = 16

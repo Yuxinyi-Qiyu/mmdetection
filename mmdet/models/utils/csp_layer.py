@@ -108,7 +108,7 @@ class CSPLayer(BaseModule):
         mid_channels = int(out_channels * expand_ratio)
         self.main_conv = ConvModule(
             in_channels,
-            mid_channels,
+            mid_channels, # 256*0.5
             1,
             conv_cfg=conv_cfg,
             norm_cfg=norm_cfg,
@@ -121,8 +121,8 @@ class CSPLayer(BaseModule):
             norm_cfg=norm_cfg,
             act_cfg=act_cfg)
         self.final_conv = ConvModule(
-            2 * mid_channels, #256*2
-            out_channels, #512
+            2 * mid_channels,
+            out_channels,
             1,
             conv_cfg=conv_cfg,
             norm_cfg=norm_cfg,
@@ -130,7 +130,7 @@ class CSPLayer(BaseModule):
 
         self.blocks = nn.Sequential(*[
             DarknetBottleneck(
-                mid_channels,#256
+                mid_channels,#128
                 mid_channels,
                 1.0,
                 add_identity,

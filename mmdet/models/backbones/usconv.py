@@ -34,9 +34,9 @@ class USConv2d(nn.Conv2d):
         y = nn.functional.conv2d(
             input, weight, bias, self.stride, self.padding,
             self.dilation, self.groups)
-        print("~~~~~~"+str(y.shape)) # torch.Size([8, 24, 320, 320])
-        print("~~~~~~out"+str(self.out_channels))  #24
-        print("~~~~~~in"+str(self.in_channels)) #12
+        # print("~~~~~~"+str(y.shape)) # torch.Size([8, 24, 320, 320])
+        # print("~~~~~~out"+str(self.out_channels))  #24
+        # print("~~~~~~in"+str(self.in_channels)) #12
         return y
 
 

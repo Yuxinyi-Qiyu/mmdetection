@@ -33,10 +33,12 @@ model = dict(
     backbone=dict(
         type='CSPDarknet',
         conv_cfg=dict(type='USConv2d'),
+        norm_cfg=dict(type='USBN2d'),
         deepen_factor=0.33,
         widen_factor=0.5),
     neck=dict(
         type='YOLOXPAFPN',
+        conv_cfg=dict(type='USConv2d'),
         in_channels=[128, 256, 512],
         out_channels=128,
         num_csp_blocks=1),

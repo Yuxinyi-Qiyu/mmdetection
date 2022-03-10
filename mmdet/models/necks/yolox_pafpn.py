@@ -55,6 +55,9 @@ class YOLOXPAFPN(BaseModule):
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
 
         # build top-down blocks
+        # in_channels=[128, 256, 512],
+        #         out_channels=128,
+        #         num_csp_blocks=1
         self.upsample = nn.Upsample(**upsample_cfg)
         self.reduce_layers = nn.ModuleList()
         self.top_down_blocks = nn.ModuleList()
@@ -69,8 +72,8 @@ class YOLOXPAFPN(BaseModule):
                     act_cfg=act_cfg))
             self.top_down_blocks.append(
                 CSPLayer(
-                    in_channels[idx - 1] * 2,
-                    in_channels[idx - 1],
+                    in_channels[idx - 1] * 2, # 256*2
+                    in_channels[idx - 1], #256
                     num_blocks=num_csp_blocks,
                     add_identity=False,
                     use_depthwise=use_depthwise,
@@ -113,6 +116,80 @@ class YOLOXPAFPN(BaseModule):
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
+        # print("<<<<<<<<<<<<<<<<<<<<")
+        # print(self.bottom_up_blocks)
+        #<<<<<<<<<<<<<<<<<<<<
+        # ConvModule(
+        #   (conv): USConv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+        #   (bn): BatchNorm2d(256, eps=0.001, momentum=0.03, affine=True, track_running_stats=True)
+        #   (activate): Swish()
+        # )
+
+    def set_arch(self, arch, **kwargs):
+        base_channel = arch['base_c']
+        factor = [4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
+        expansion_ratio = 0.5
+
+        for idx in range(len(self.in_channels) - 1):
+            # reduce_layers
+            in_channel = base_channel * factor[len(factor) - idx]
+            out_channel = base_channel * factor[len(factor) - idx - 1]
+            self.reduce_layers[idx].conv.in_channels, self.reduce_layers[idx].conv.out_channels = in_channel, out_channel
+            self.reduce_layers[idx].bn.num_features = out_channel
+            # top_down_blocks
+            mid_channel = int(out_channel * expansion_ratio)
+            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = in_channel, mid_channel
+            self.top_down_blocks[idx].main_conv.bn.num_features = mid_channel
+            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = in_channel, mid_channel
+            self.top_down_blocks[idx].short_conv.bn.num_features = mid_channel
+            self.top_down_blocks[idx].final_conv.conv.in_channels, self.top_down_blocks[idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel
+            self.top_down_blocks[idx].final_conv.bn.num_features = out_channel
+            darknetbottleneck = self.top_down_blocks[idx].blocks  # Sequential
+            num_blocks = 1
+            for block_num in range(num_blocks):
+                hidden_channel = mid_channel
+                darknetbottleneck[block_num].conv1.conv.in_channels, darknetbottleneck[
+                    block_num].conv1.conv.out_channels = mid_channel, hidden_channel
+                darknetbottleneck[block_num].conv1.bn.num_features = hidden_channel
+                darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[
+                    block_num].conv2.conv.out_channels = hidden_channel, mid_channel
+                darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
+
+        for idx in range(len(self.in_channels) - 1):
+            # downsamples
+            channel = base_channel * factor[idx] # 128
+            self.downsamples[idx].conv.in_channels, self.downsamples[idx].conv.out_channels = channel
+            self.downsamples[idx].bn.num_features = channel
+            # bottom_up_blocks
+            in_channel = channel * 2 # 256
+            out_channel = base_channel * factor[idx + 1] # 256
+            mid_channel = out_channel * 0.5 # 128
+            self.bottom_up_blocks[idx].main_conv.conv.in_channels, self.bottom_up_blocks[
+                idx].main_conv.conv.out_channels = in_channel, mid_channel
+            self.bottom_up_blocks[idx].main_conv.bn.num_features = mid_channel
+            self.bottom_up_blocks[idx].short_conv.conv.in_channels, self.bottom_up_blocks[
+                idx].short_conv.conv.out_channels = in_channel, mid_channel
+            self.bottom_up_blocks[idx].short_conv.bn.num_features = mid_channel
+            self.bottom_up_blocks[idx].final_conv.conv.in_channels, self.bottom_up_blocks[
+                idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel
+            self.bottom_up_blocks[idx].final_conv.bn.num_features = out_channel
+            darknetbottleneck = self.bottom_up_blocks[idx].blocks  # Sequential
+            num_blocks = 1
+            for block_num in range(num_blocks):
+                hidden_channel = mid_channel # 128
+                darknetbottleneck[block_num].conv1.conv.in_channels, darknetbottleneck[
+                    block_num].conv1.conv.out_channels = mid_channel, hidden_channel
+                darknetbottleneck[block_num].conv1.bn.num_features = hidden_channel
+                darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[
+                    block_num].conv2.conv.out_channels = hidden_channel, mid_channel
+                darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
+        # upsample?
+        # out_convs
+        for idx in range(len(self.in_channels)):
+            in_channel = base_channel * facotr[idx]
+            out_channel = 128 #todo
+            self.out_convs[idx].conv.in_channels, self.out_convs[idx].conv.out_channels = channel, out_channel
+            self.out_convs[idx].bn.num_features = out_channel
 
     def forward(self, inputs):
         """
@@ -154,3 +231,4 @@ class YOLOXPAFPN(BaseModule):
             outs[idx] = conv(outs[idx])
 
         return tuple(outs)
+

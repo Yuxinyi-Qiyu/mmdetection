@@ -77,6 +77,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         arch = {}
         if self.search_backbone:
             backbone_c_range = [16, 64]
+            # arch['base_c'] = 128
             arch['base_c'] = np.random.randint(backbone_c_range[0], backbone_c_range[
                 1] + self.c_interval) // self.c_interval * self.c_interval
             print("arch['base_c']:"+str(arch['base_c']))
