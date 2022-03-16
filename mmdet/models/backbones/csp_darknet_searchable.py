@@ -8,6 +8,7 @@ from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from ..builder import BACKBONES
+from .usconv import sepc_conv, USsepc_conv, USConv2d, USLinear, USBatchNorm2d
 from ..utils import CSPLayer
 
 
@@ -37,8 +38,8 @@ class Focus(nn.Module):
                  act_cfg=dict(type='Swish')):
         super().__init__()
         self.conv = ConvModule(
-            in_channels * 4,
-            out_channels,
+            in_channels * 4, # 3*4
+            out_channels, # 24
             kernel_size,
             stride,
             padding=(kernel_size - 1) // 2,
@@ -61,6 +62,8 @@ class Focus(nn.Module):
             ),
             dim=1,
         )
+        # print("_____________")
+        # print(x.size()) #torch.Size([8, 12, 320, 320])
         return self.conv(x)
 
 
@@ -121,7 +124,7 @@ class SPPBottleneck(BaseModule):
 
 
 @BACKBONES.register_module()
-class CSPDarknet(BaseModule):
+class CSPDarknet_Searchable(BaseModule):
     """CSP-Darknet backbone used in YOLOv5 and YOLOX.
 
     Args:
@@ -166,6 +169,7 @@ class CSPDarknet(BaseModule):
     """
     # From left to right:
     # in_channels, out_channels, num_blocks, add_identity, use_spp
+
     arch_settings = {
         'P5': [[64, 128, 3, True, False], [128, 256, 9, True, False],
                [256, 512, 9, True, False], [512, 1024, 3, False, True]],
@@ -173,6 +177,13 @@ class CSPDarknet(BaseModule):
                [256, 512, 9, True, False], [512, 768, 3, True, False],
                [768, 1024, 3, False, True]]
     }
+    # arch_settings = {
+    #     'P5': [[128, 256, 3, True, False], [256, 512, 9, True, False],
+    #            [512, 1024, 9, True, False], [1024, 2048, 3, False, True]],
+    #     'P6': [[64, 128, 3, True, False], [128, 256, 9, True, False],
+    #            [256, 512, 9, True, False], [512, 768, 3, True, False],
+    #            [768, 1024, 3, False, True]]
+    # }
 
     def __init__(self,
                  arch='P5',
@@ -258,6 +269,10 @@ class CSPDarknet(BaseModule):
             self.add_module(f'stage{i + 1}', nn.Sequential(*stage))
             self.layers.append(f'stage{i + 1}')
 
+        # for i, layer_name in enumerate(self.layers):
+        #     layer = getattr(self, layer_name)
+        #     print("i="+str(i)+":"+str(layer.type))
+
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
             for i in range(self.frozen_stages + 1):
@@ -267,7 +282,7 @@ class CSPDarknet(BaseModule):
                     param.requires_grad = False
 
     def train(self, mode=True):
-        super(CSPDarknet, self).train(mode)
+        super(CSPDarknet_Searchable, self).train(mode)
         self._freeze_stages()
         if mode and self.norm_eval:
             for m in self.modules():
@@ -278,7 +293,75 @@ class CSPDarknet(BaseModule):
         outs = []
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
+            # print(layer_name)
+            # print(x.shape)
             x = layer(x)
+            # print(x.shape)
+            # print("fin!")
             if i in self.out_indices:
                 outs.append(x)
         return tuple(outs)
+
+    def set_arch(self, arch, **kwargs):
+        base_channel = arch['base_c']  # 修改base channel
+        factor = [1, 2, 4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
+        widen_factor = 0.5 # todo
+        for i, layer_name in enumerate(self.layers):
+            layer = getattr(self, layer_name)
+            if layer_name == "stem":
+                layer.conv.conv.out_channels = int(base_channel * widen_factor)
+                layer.conv.bn.num_features = int(base_channel * widen_factor)
+                continue
+
+            arch_setting = self.arch_settings['P5']
+            _, _, num_blocks, _, use_spp = arch_setting[i - 1]
+            num_blocks = max(round(num_blocks * 0.33), 1) # deepfactor
+            use_spp_x = 1 if use_spp else 0
+            # convmodule
+            in_channel = int(base_channel * widen_factor) * factor[i - 1]
+            out_channel = int(base_channel * widen_factor) * factor[i]
+            layer[0].conv.in_channels, layer[0].conv.out_channels = in_channel, out_channel
+            layer[0].bn.num_features = out_channel
+            if use_spp:
+                # sppbottleneck  ?conv2_channels = mid_channels * (len(kernel_sizes) + 1)
+                in_channel = out_channel
+                mid_channel = in_channel // 2
+                out_channel = out_channel
+                layer[1].conv1.conv.in_channels, layer[1].conv1.conv.out_channels = in_channel, mid_channel
+                layer[1].conv1.bn.num_features = mid_channel
+                layer[1].conv2.conv.in_channels, layer[1].conv2.conv.out_channels = mid_channel * 4, out_channel
+                layer[1].conv2.bn.num_features = out_channel
+            # CSPlayer mid_channels = int(out_channels * expand_ratio)
+            # num_blocks = max(round(num_blocks * deepen_factor), 1)
+            in_channel = out_channel
+            mid_channel = int(out_channel * 0.5)
+            layer[1 + use_spp_x].main_conv.conv.in_channels, layer[1 + use_spp_x].main_conv.conv.out_channels = in_channel, mid_channel
+            layer[1 + use_spp_x].main_conv.bn.num_features = mid_channel
+            layer[1 + use_spp_x].short_conv.conv.in_channels, layer[1 + use_spp_x].short_conv.conv.out_channels = in_channel, mid_channel
+            layer[1 + use_spp_x].short_conv.bn.num_features = mid_channel
+            layer[1 + use_spp_x].final_conv.conv.in_channels, layer[1 + use_spp_x].final_conv.conv.out_channels = mid_channel * 2, out_channel
+            layer[1 + use_spp_x].final_conv.bn.num_features = out_channel
+            # DarknetBottleneck
+            darknetbottleneck = layer[1 + use_spp_x].blocks  # Sequential
+            for block_num in range(num_blocks):
+                hidden_channel = mid_channel
+                darknetbottleneck[block_num].conv1.conv.in_channels, darknetbottleneck[block_num].conv1.conv.out_channels = mid_channel, hidden_channel
+                darknetbottleneck[block_num].conv1.bn.num_features = hidden_channel
+                darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[block_num].conv2.conv.out_channels = hidden_channel, mid_channel
+                darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
+
+        # print("<<<<<<<<<<<<<<<<<<<<<<")
+        # print("the model")
+        # for i, layer_name in enumerate(self.layers):
+        #     layer = getattr(self, layer_name)
+        #     print("i=" + str(i) + ":" + str(layer))
+
+        '''
+            # layer.conv.conv.in_channels = 16
+            arch_settings = {
+        'P5': [[64, 128, 3, True, False], [128, 256, 9, True, False],
+               [256, 512, 9, True, False], [512, 1024, 3, False, True]]
+    }
+    in_channels, out_channels, num_blocks, add_identity,
+                use_spp
+    factor = [1, 2, 4 ,8, 16]'''

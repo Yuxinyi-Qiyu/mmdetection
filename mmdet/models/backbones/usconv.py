@@ -10,7 +10,6 @@ import torch
 import math
 from mmcv.cnn import build_conv_layer, build_norm_layer
 
-
 @CONV_LAYERS.register_module('USConv2d')
 class USConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
@@ -22,6 +21,10 @@ class USConv2d(nn.Conv2d):
         self.depthwise = depthwise
 
     def forward(self, input): # 表示卷积呗
+        # print("self.in_channels")
+        # print(self.in_channels) # 768
+        # print("self.out_channels")
+        # print(self.out_channels) # 384
         self.groups = self.in_channels if self.depthwise else 1
         weight = self.weight[:self.out_channels, :self.in_channels, :, :]
         # 怎么取self weight（未见到定义  ：？可能是conv的性质？
@@ -34,6 +37,7 @@ class USConv2d(nn.Conv2d):
         y = nn.functional.conv2d(
             input, weight, bias, self.stride, self.padding,
             self.dilation, self.groups)
+        # print("usconv-fin")
         # print("~~~~~~"+str(y.shape)) # torch.Size([8, 24, 320, 320])
         # print("~~~~~~out"+str(self.out_channels))  #24
         # print("~~~~~~in"+str(self.in_channels)) #12
@@ -246,7 +250,6 @@ class FA_DCNv2_FP(nn.Conv2d):
         out = self.conv(input)
         return out
 
-
 @NORM_LAYERS.register_module('USBN2d')
 class USBatchNorm2d(nn.BatchNorm2d):
     def __init__(self,
@@ -254,50 +257,33 @@ class USBatchNorm2d(nn.BatchNorm2d):
                  eps=1e-5,
                  momentum=0.1,
                  affine=True,
-                 track_running_stats=True,
                  group=None,
                  stats_mode='default',
                  fea_range=[64, 384]):
         super(USBatchNorm2d, self).__init__(
-            num_features=num_features, affine=True, track_running_stats=False)
-        self.num_features_max = num_features
-        # for tracking performance during training
-        self.fea_list = []
+            num_features=num_features, affine=True)
+        # self.num_features_max = num_features
 
-        for i in range((fea_range[1] - fea_range[0]) // 16):
-            self.fea_list.append(fea_range[0] + 16 * i)
-        self.fea_list.append(fea_range[1])
-        # print(self.fea_list)
-        self.bn = nn.ModuleList([
-            nn.BatchNorm2d(i, affine=False) for i in self.fea_list])
+        # self.bn = nn.BatchNorm2d(self.num_features_max, affine=False)
 
-        self.ignore_model_profiling = True
         self.training = True
 
     def forward(self, input):
         weight = self.weight
         bias = self.bias
-        if self.num_features in self.fea_list:
-            idx = self.fea_list.index(self.num_features)
-            y = nn.functional.batch_norm(
-                input,
-                self.bn[idx].running_mean[:self.num_features],
-                self.bn[idx].running_var[:self.num_features],
-                weight[:self.num_features],
-                bias[:self.num_features],
-                self.training,
-                self.momentum,
-                self.eps)
-        else:
-            y = nn.functional.batch_norm(
-                input,
-                self.running_mean,
-                self.running_var,
-                weight[:self.num_features],
-                bias[:self.num_features],
-                self.training,
-                self.momentum,
-                self.eps)
+        # print("input.size()")
+        # print(input.size())
+        # print("self.num_features")
+        # print(self.num_features)
+        y = nn.functional.batch_norm(
+            input,
+            self.running_mean[:self.num_features],
+            self.running_var[:self.num_features],
+            weight[:self.num_features],
+            bias[:self.num_features],
+            self.training,
+            self.momentum,
+            self.eps)
 
         return y
 

@@ -11,7 +11,7 @@ from .single_stage import SingleStageDetector
 
 
 @DETECTORS.register_module()
-class YOLOX(SingleStageDetector):
+class YOLOX_Searchable(SingleStageDetector):
     r"""Implementation of `YOLOX: Exceeding YOLO Series in 2021
     <https://arxiv.org/abs/2107.08430>`_
 
@@ -53,8 +53,11 @@ class YOLOX(SingleStageDetector):
                  size_multiplier=32,
                  random_size_range=(15, 25),
                  random_size_interval=10,
+                 search_backbone=True,
+                 search_neck=True,
+                 search_head=False,
                  init_cfg=None):
-        super(YOLOX, self).__init__(backbone, neck, bbox_head, train_cfg,
+        super(YOLOX_Searchable, self).__init__(backbone, neck, bbox_head, train_cfg,
                                     test_cfg, pretrained, init_cfg)
         self.rank, self.world_size = get_dist_info()
         self._default_input_size = input_size
@@ -63,6 +66,17 @@ class YOLOX(SingleStageDetector):
         self._random_size_interval = random_size_interval
         self._size_multiplier = size_multiplier
         self._progress_in_iter = 0
+        self.search_backbone = search_backbone
+        self.search_neck = search_neck
+        self.search_head = search_head
+        self.arch = 0
+
+    def set_arch(self, arch, **kwargs):
+        self.arch = arch
+        if self.search_backbone:
+            self.backbone.set_arch(self.arch)
+        if self.search_neck:
+            self.neck.set_arch(self.arch)
 
     def forward_train(self,
                       img,
@@ -90,7 +104,7 @@ class YOLOX(SingleStageDetector):
         # Multi-scale training
         img, gt_bboxes = self._preprocess(img, gt_bboxes)
 
-        losses = super(YOLOX, self).forward_train(img, img_metas, gt_bboxes,
+        losses = super(YOLOX_Searchable, self).forward_train(img, img_metas, gt_bboxes,
                                                   gt_labels, gt_bboxes_ignore)
 
         # random resizing
