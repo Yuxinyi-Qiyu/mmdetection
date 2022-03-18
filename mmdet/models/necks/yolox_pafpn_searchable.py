@@ -116,21 +116,37 @@ class YOLOXPAFPN_Searchable(BaseModule):
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
-        
-        # ConvModule(
-        #   (conv): USConv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        #   (bn): BatchNorm2d(256, eps=0.001, momentum=0.03, affine=True, track_running_stats=True)
-        #   (activate): Swish()
-        # )
+        # print("<<<<<<<<<<<<<<<<<<<<")
+        # print("self.reduce_layers")
+        # print(self.reduce_layers)
+        # print("self.top_down_blocks")
+        # print(self.top_down_blocks)
+        # print("self.downsamples")
+        # print(self.downsamples)
+        # print("self.bottom_up_blocks")
+        # print(self.bottom_up_blocks)
+        # print("self.out_convs")
+        # print(self.out_convs)
+
 
     def set_arch(self, arch, **kwargs):
-        base_channel = arch['base_c']
-        factor = [4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
-        widen_factor = 0.5
-        expansion_ratio = 0.5
+        widen_factor = arch['widen_factor']
+        in_channels = self.in_channels
+        out_channels = self.out_channels
+        # base_channel = int(in_channels[0] * widen_factor // 16 * 16) # todo：改成以in_channel为基准的
+        base_channel = max(int(64 * widen_factor // 16 * 16), 16)
+        base_channel = base_channel * 4
 
-        for i in range(len(factor)):
-            factor[i] = int(factor[i] * widen_factor)
+        # print("base_channel:"+str(base_channel))
+
+        # factor = [4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
+        factor = [1 ,2, 4] # 每个stage的in_channel对应basechannel的倍数
+        # widen_factor = 0.5
+        expansion_ratio = 0.5 # todo 搞清楚这是个啥
+
+        # for i in range(len(factor)):
+        #     # factor[i] = int(factor[i] * widen_factor)
+        #     factor[i] = int(factor[i] * widen_factor)
 
         for idx in range(len(self.in_channels) - 1):
             # reduce_layers
@@ -191,7 +207,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
         # out_convs
         for idx in range(len(self.in_channels)):
             in_channel = base_channel * factor[idx]
-            out_channel = 128 #todo
+            out_channel = out_channels #todo 现在都是固定的，以后改成可变的
             self.out_convs[idx].conv.in_channels = in_channel
             # self.out_convs[idx].conv.in_channels, self.out_convs[idx].conv.out_channels = channel, out_channel
             # self.out_convs[idx].bn.num_features = out_channel
@@ -247,14 +263,20 @@ class YOLOXPAFPN_Searchable(BaseModule):
         for idx in range(len(self.in_channels) - 1):
             feat_low = outs[-1]
             feat_height = inner_outs[idx + 1]
+            # print("!!!!!!!!downsamples:idx"+str(idx))
             downsample_feat = self.downsamples[idx](feat_low)
+            # print("!!!!!!!!fin")
+            # print("!!!!!!!!bottom_up_blocks:idx"+str(idx))
             out = self.bottom_up_blocks[idx](
                 torch.cat([downsample_feat, feat_height], 1))
             outs.append(out)
+            # print("!!!!!!!!fin")
+
 
         # out convs
         for idx, conv in enumerate(self.out_convs):
             outs[idx] = conv(outs[idx])
+            # print(outs[idx].size())
 
         return tuple(outs)
 

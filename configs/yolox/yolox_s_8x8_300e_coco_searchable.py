@@ -3,7 +3,24 @@ _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 # todo: search_head等参数，按照学姐cfg文件格式改！
 checkpoint_config = dict(type='CheckpointHook_nolog', interval=1)
 # runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-runner = dict(type='EpochBasedRunnerSuper', max_epochs=30)
+
+panas_c_range = [16, 64]
+widen_factor_range = [0, 1]
+deepen_factor_range = [0.33, 1]
+search_backbone = True
+search_neck = True
+search_head = False
+img_scale = (640, 640)
+
+runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
+              panas_c_range=panas_c_range,
+              widen_factor_range=widen_factor_range,
+              deepen_factor_range=deepen_factor_range,
+              search_backbone=search_backbone,
+              search_neck=search_neck,
+              search_head=search_head
+              )
+
 log_config = dict(
     interval=50,
     hooks=[
@@ -21,9 +38,7 @@ optimizer = dict(
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
 optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
 
-panas_c_range = [16, 64]
 
-img_scale = (640, 640)
 
 # model settings
 model = dict(
@@ -36,17 +51,21 @@ model = dict(
         conv_cfg=dict(type='USConv2d'),
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
-        deepen_factor=0.33,
-        widen_factor=0.5),
+        # deepen_factor=0.33,
+        deepen_factor=1.0,
+        # widen_factor=0.5,
+        widen_factor=1.0),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
-        in_channels=[128, 256, 512],
-        out_channels=128,
+        # in_channels=[128, 256, 512],
+        in_channels=[256, 512, 1024],
+        # out_channels=128,
+        out_channels=256,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=80, in_channels=128, feat_channels=128),
+        type='YOLOXHead', num_classes=80, in_channels=256, feat_channels=256), # feat_channels 是啥
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.

@@ -29,9 +29,13 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
                  panas_c_range=[128, 256],
                  panas_d_range=[3, 12],
                  head_d_range = [1, 3],
+                 widen_factor_range=[0, 1],
+                 deepen_factor_range=[0, 1],
                  cb_type = 3,
                  cb_step = 4,
                  c_interval = 16,
+                 w_interval = 16, # @todo
+                 base_channel = 64,
                  search_backbone=True,
                  search_neck=True,
                  search_head=False,
@@ -42,14 +46,19 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         self.panas_c_range = panas_c_range
         self.panas_d_range = panas_d_range
         self.head_d_range = head_d_range
+        self.widen_factor_range = widen_factor_range,
+        self.deepen_factor_range = deepen_factor_range,
         self.cb_type = cb_type
         self.cb_step = cb_step
         self.c_interval = c_interval
+        self.base_channel = base_channel
+        self.w_interval = w_interval
         self.sandwich = sandwich
 
         self.search_backbone = search_backbone
         self.search_neck = search_neck
         self.search_head =  search_head
+
 
         self.arch = None
 
@@ -76,10 +85,14 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
     def get_cand_arch(self, max_arch=False, min_arch=False):
         arch = {}
         if self.search_backbone:
-            backbone_c_range = [16, 64]
-            arch['base_c'] = np.random.randint(backbone_c_range[0], backbone_c_range[
-                1] + self.c_interval) // self.c_interval * self.c_interval
-            # print("arch['base_c']:"+str(arch['base_c']))
+            widen_factor_range = self.widen_factor_range[0] # todo ??  ([0,1],)
+            deepen_factor_range = self.deepen_factor_range[0] # todo??
+            # todo: arch['widen_factor'] = np.random.uniform(widen_factor_range[0], widen_factor_range[1]) * self.base_channel // self.w_interval * self.w_interval #[0,1]
+            arch['widen_factor'] = np.random.uniform(widen_factor_range[0]+0.01, widen_factor_range[1]) #[0,1]
+            arch['deepen_factor'] = deepen_factor_range[np.random.randint(0, 2)]
+            # print("arch['widen_factor']:"+str(arch['widen_factor']))
+            # print("arch['deepen_factor']:"+str(arch['deepen_factor']))
+            #todo: deepen是随机生成数组下标，要改
         # if self.search_neck:
         #     arch['panas_arch'] = [np.random.randint(self.panas_type) for i in range(self.panas_d_range[1])]
         #     arch['panas_d'] = np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1)

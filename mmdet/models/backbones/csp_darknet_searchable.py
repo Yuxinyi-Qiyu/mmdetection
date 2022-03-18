@@ -220,6 +220,9 @@ class CSPDarknet_Searchable(BaseModule):
         self.frozen_stages = frozen_stages
         self.use_depthwise = use_depthwise
         self.norm_eval = norm_eval
+        self.widen_factor = widen_factor
+        self.deepen_factor = deepen_factor # todo
+
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
 
         self.stem = Focus(
@@ -235,6 +238,7 @@ class CSPDarknet_Searchable(BaseModule):
                 use_spp) in enumerate(arch_setting):
             in_channels = int(in_channels * widen_factor)
             out_channels = int(out_channels * widen_factor)
+            # num_blocks = max(round(num_blocks * deepen_factor), 1)
             num_blocks = max(round(num_blocks * deepen_factor), 1)
             stage = []
             conv_layer = conv(
@@ -269,6 +273,7 @@ class CSPDarknet_Searchable(BaseModule):
             self.add_module(f'stage{i + 1}', nn.Sequential(*stage))
             self.layers.append(f'stage{i + 1}')
 
+        # print("<<<<<<<<<<<<<<<<<backbone")
         # for i, layer_name in enumerate(self.layers):
         #     layer = getattr(self, layer_name)
         #     print("i="+str(i)+":"+str(layer.type))
@@ -293,33 +298,38 @@ class CSPDarknet_Searchable(BaseModule):
         outs = []
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
-            # print(layer_name)
-            # print(x.shape)
+
             x = layer(x)
-            # print(x.shape)
-            # print("fin!")
+
             if i in self.out_indices:
                 outs.append(x)
         return tuple(outs)
 
     def set_arch(self, arch, **kwargs):
-        base_channel = arch['base_c']  # 修改base channel
+        # base_channel = 64
+        # base_channel = arch['base_c']  # 修改base channel
         factor = [1, 2, 4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
-        widen_factor = 0.5 # todo
+        widen_factor = arch['widen_factor']
+        base_channel = max(int(self.arch_settings['P5'][0][0] * widen_factor // 16 * 16), 16)#todo
+        # print("base_channel:"+str(base_channel))
+        deepen_factor = arch['deepen_factor']
+        self.widen_factor = widen_factor
+        deepen_factor = 1
+        self.deepen_factor = deepen_factor
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
             if layer_name == "stem":
-                layer.conv.conv.out_channels = int(base_channel * widen_factor)
-                layer.conv.bn.num_features = int(base_channel * widen_factor)
+                layer.conv.conv.out_channels = base_channel
+                layer.conv.bn.num_features = base_channel
                 continue
 
             arch_setting = self.arch_settings['P5']
-            _, _, num_blocks, _, use_spp = arch_setting[i - 1]
-            num_blocks = max(round(num_blocks * 0.33), 1) # deepfactor
+            _, _, num_blocks, _, use_spp = arch_setting[i - 1] # todo 改成从arch setting里取出in/out channel * widen——factor
+            num_blocks = max(round(num_blocks * deepen_factor), 1) # deepfactor
             use_spp_x = 1 if use_spp else 0
             # convmodule
-            in_channel = int(base_channel * widen_factor) * factor[i - 1]
-            out_channel = int(base_channel * widen_factor) * factor[i]
+            in_channel = base_channel * factor[i - 1]
+            out_channel = base_channel * factor[i]
             layer[0].conv.in_channels, layer[0].conv.out_channels = in_channel, out_channel
             layer[0].bn.num_features = out_channel
             if use_spp:

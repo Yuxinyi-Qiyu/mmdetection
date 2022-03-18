@@ -48,42 +48,51 @@ class EvolutionSearcher(object):
 
     def __init__(self, args):
         self.args = args
-        self.max_epochs = args.max_epochs
-        self.select_num = args.select_num
-        self.population_num = args.population_num
-        self.m_prob = args.m_prob
-        self.crossover_num = args.crossover_num
-        self.mutation_num = args.mutation_num
-        self.flops_limit = args.flops_limit
-        self.input_shape = (3,) + tuple(args.shape)
+        self.max_epochs = args.max_epochs # 20
+        self.select_num = args.select_num # 10
+        self.population_num = args.population_num # 50
+        self.m_prob = args.m_prob # 0.1
+        self.crossover_num = args.crossover_num # 25
+        self.mutation_num = args.mutation_num # 25
+        self.flops_limit = args.flops_limit # None (float) # 17.651 M 122.988 GFLOPS
+        self.input_shape = (3,) + tuple(args.shape) # default=[1280, 800]  [3,1280,800]?
+
         self.cfg, self.meta = get_cfg(self.args)
+        # 获取cfg文件所有内容道meta上
+
         # self.cfg.model['search_backbone'] = True
         # self.cfg.model['search_neck'] = True
         # self.cfg.model['search_head'] = True
         self.train_dataset = get_train_data(self.cfg)
         self.cfg = self.cfg.copy()
+        print("before get model")
+        # bug!! The model and loaded state dict do not match exactly #todo
         self.model, self.distributed = get_model(self.cfg, self.args)
+        print("after get model")
+
+        # dataset
         self.test_dataset, self.test_data_loader = get_test_data(self.cfg.data.test, self.distributed, self.args)
         # self.train_dataset, self.train_data_loader = get_test_data(self.cfg.data.train, self.distributed, self.args)
 
-        self.panas_c_range = self.cfg.get('panas_c_range', None)
-        self.panas_d_range = self.cfg.get('panas_d_range', None)
+        self.widen_factor_range = self.cfg.get('widen_factor_range', None) # panas_c_range = [16, 64]
+        self.panas_c_range = self.cfg.get('panas_c_range', None) # panas_c_range = [16, 64]
+        # self.panas_d_range = self.cfg.get('panas_d_range', None) # None
         # self.panas_d_range = [1,1]
-        self.head_d_range = self.cfg.get('head_d_range', None)
-        self.panas_layer = self.panas_d_range[1]
-        self.panas_state = self.cfg.get('panas_type', None)
-        self.cb_step = self.cfg.get('cb_step', None)
-        self.cb_type = self.cfg.get('cb_type', None)
-        self.primitives = self.cfg.get('primitives', None)
+        # self.head_d_range = self.cfg.get('head_d_range', None)
+        # self.panas_layer = self.panas_d_range[1]
+        # self.panas_state = self.cfg.get('panas_type', None)
+        # self.cb_step = self.cfg.get('cb_step', None)
+        # self.cb_type = self.cfg.get('cb_type', None)
+        # self.primitives = self.cfg.get('primitives', None)
         # self.search_backbone = self.cfg.model.get('search_backbone', None)
         # self.search_neck = self.cfg.model.get('search_neck', None)
         # self.search_head = self.cfg.model.get('search_head', None)
 
         self.search_backbone = True
         self.search_neck = True
-        self.search_head = True
+        self.search_head = False
         # self.log_dir = os.path.join(os.path.split(args.checkpoint)[0], 'ea')
-        self.log_dir = '/summary'
+        self.log_dir = '.workdir/summary'
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         self.checkpoint_name = os.path.join(self.log_dir, 'ea_'
@@ -133,28 +142,7 @@ class EvolutionSearcher(object):
 
     def get_param(self, cand):
         panas_arch = [self.primitives[i] for i in cand['panas_arch'][:cand['panas_d']]]
-        if 'r18' in self.args.config:
-            cfg = Config.fromfile('configs/panasv2_fpn/cascade_rcnn_r18_panasv2_fp_1x_coco.py')
-        if '2r50' in self.args.config:
-            if cand['cb_step'] == 1:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_rcnn_2r50dcn_panasv2_fp_1x_coco.py')
-            else:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_rcnn_db2r50dcn_panasv2_fp_1x_coco.py')
-        if '2r101' in self.args.config:
-            if cand['cb_step'] == 1:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_rcnn_2r101dcn_panasv2_fp_1x_coco.py')
-            else:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_rcnn_db2r101dcn_panasv2_fp_1x_coco.py')
-        elif 'swin-t' in self.args.config:
-            if cand['cb_step'] == 1:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_mask_rcnn_swin-t-p4-w7_PANASv2_fp_1x_coco.py')
-            else:
-                cfg = Config.fromfile('configs/panasv2_fpn/cascade_mask_rcnn_dbswin-t-p4-w7_PANASv2_fp_1x_coco.py')
-        elif 'swin-s' in self.args.config:
-            if cand['cb_step'] == 1:
-                cfg = Config.fromfile('configs/panasv2_fpn/mask_rcnn_swin-s-p4-w7_PANASv2_fp_1x_coco.py')
-            else:
-                cfg = Config.fromfile('configs/panasv2_fpn/mask_rcnn_dbswin-s-p4-w7_PANASv2_fp_1x_coco.py')
+        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_coco_searchable.py')
 
         if args.cfg_options is not None:
             cfg.merge_from_dict(args.cfg_options)
@@ -264,18 +252,19 @@ class EvolutionSearcher(object):
             for cand in cands:
                 yield cand
 
-    def get_random(self, num):
+    def get_random(self, num): # num=population_num
         print('random select ........')
-
+        lambda: {'panas_arch': tuple([np.random.randint(self.panas_state) for i in range(self.panas_layer)]),
+        # AttributeError: 'EvolutionSearcher' object has no attribute 'panas_layer'
         cand_iter = self.stack_random_cand(
-            lambda: {'panas_arch': tuple([np.random.randint(self.panas_state) for i in range(self.panas_layer)]),
+            lambda: {
+                     # 'panas_arch': tuple([np.random.randint(self.panas_state) for i in range(self.panas_layer)]),
                      'panas_c': np.random.randint(self.panas_c_range[0], self.panas_c_range[1]) // 16 * 16,
-                     'panas_d': np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1),
-                     'cb_type': np.random.randint(self.cb_type),
-                     'cb_step': np.random.randint(1, self.cb_step + 1),
-                     'head_step': np.random.randint(self.head_d_range[0],
-                                                    self.head_d_range[1] + 1) if 'cascade' in self.args.config else 0,
-
+                     # 'panas_d': np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1),
+                     # 'cb_type': np.random.randint(self.cb_type),
+                     # 'cb_step': np.random.randint(1, self.cb_step + 1),
+                     # 'head_step': np.random.randint(self.head_d_range[0],
+                     #                                self.head_d_range[1] + 1) if 'cascade' in self.args.config else 0,
                      })
         while len(self.candidates) < num:
             cand = next(cand_iter)
@@ -408,6 +397,7 @@ class EvolutionSearcher(object):
 
     def search(self):
         rank, _ = get_dist_info()
+        print(rank)
         if rank == 0:
             print(
                 'population_num = {} select_num = {} mutation_num = {} crossover_num = {} random_num = {} max_epochs = {}'.format(
@@ -468,3 +458,5 @@ if __name__ == '__main__':
     args = parse_args()
     searcher = EvolutionSearcher(args)
     searcher.search()
+
+    # python tools/search/search.py 运行
