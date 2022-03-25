@@ -30,12 +30,15 @@ def no_grad_wrapper(func):
 
 @no_grad_wrapper
 def get_cand_map(model, args, distributed, cfg, data_loader, dataset):
+    #todo：map=0？而且第一次test后不计算map？
 
     dataset_test = dataset
     data_loader_test = data_loader
 
-    if not distributed:
+
+    if not distributed: # False
         model = MMDataParallel(model, device_ids=[0])
+        print("before outputs")
         outputs = single_gpu_test(model, data_loader_test, args.show, args.show_dir,
                                   args.show_score_thr)
     else:
@@ -46,15 +49,16 @@ def get_cand_map(model, args, distributed, cfg, data_loader, dataset):
         outputs = multi_gpu_test(model, data_loader_test, args.tmpdir,
                                  args.gpu_collect)
 
-    rank, _ = get_dist_info()
+    rank, _ = get_dist_info() # rank = 0
     if rank == 0:
-        if args.out:
+
+        if args.out: # None
             print(f'\nwriting results to {args.out}')
             mmcv.dump(outputs, args.out)
         kwargs = {} if args.eval_options is None else args.eval_options
         if args.format_only:
             dataset_test.format_results(outputs, **kwargs)
-        if args.eval:
+        if args.eval: # bbox
             eval_kwargs = cfg.get('evaluation', {}).copy()
             # hard-code way to remove EvalHook args
             for key in [
@@ -62,13 +66,21 @@ def get_cand_map(model, args, distributed, cfg, data_loader, dataset):
                     'rule'
             ]:
                 eval_kwargs.pop(key, None)
+            print("eval_kwargs")
+            print(eval_kwargs)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            print("eval_kwargs")
+            print(eval_kwargs)
             metric = dataset_test.evaluate(outputs, **eval_kwargs)
+            print("hree")
             metric_dict = dict(config=args.config, metric=metric)
             print(metric)
+            #OrderedDict([('bbox_mAP', 0.0), ('bbox_mAP_50', 0.0), ('bbox_mAP_75', 0.0), ('bbox_mAP_s', 0.0), ('bbox_mAP_m', 0.0), ('bbox_mAP_l', 0.0), ('bbox_mAP_copypaste', '0.000 0.000 0.000 0.000 0.000 0.000')])
             map = []
             for key in metric:
                 map.append(metric[key])
+            print("tuple(map[:-1])")
+            print(tuple(map[:-1])) # (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             return tuple(map[:-1])
 
     return None

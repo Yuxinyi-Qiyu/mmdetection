@@ -223,20 +223,22 @@ def get_train_data(cfg):
 
 def get_model(cfg, args):
     # model get error?
+    # print("cfg.model")
+    # print(cfg.model)
+
+# cfg.model
+# {'type': 'YOLOX_Searchable', 'input_size': (640, 640), 'random_size_range': (15, 25), 'random_size_interval': 10, 'backbone': {'type': 'CSPDarknet_Searchable', 'conv_cfg': {'type': 'USConv2d'}, 'norm_cfg': {'type': 'USBN2d'}, 'deepen_factor': 1.0, 'widen_factor': 1.0}, 'neck': {'type': 'YOLOXPAFPN_Searchable', 'conv_cfg': {'type': 'USConv2d'}, 'norm_cfg': {'type': 'USBN2d'}, 'in_channels': [256, 512, 1024], 'out_channels': 256, 'num_csp_blocks': 1}, 'bbox_head': {'type': 'YOLOXHead', 'num_classes': 80, 'in_channels': 256, 'feat_channels': 256}, 'train_cfg': {'assigner': {'type': 'SimOTAAssigner', 'center_radius': 2.5}}, 'test_cfg': {'score_thr': 0.01, 'nms': {'type': 'nms', 'iou_threshold': 0.65}}}
+
     model = build_detector(
         cfg.model,
         train_cfg=cfg.get('train_cfg'),
         test_cfg=cfg.get('test_cfg'))
 
-    # fp16_cfg = cfg.get('fp16', None) or 'Fp16' in cfg.optimizer_config['type']
-    # if fp16_cfg is not None:
-    #     print("fp16_cfg is not None")
-    #     print(fp16_cfg)
-    #     wrap_fp16_model(model)
-    # else:
-    #     print("fp16_cfg is None")
+    # print("model")
+    # print(model)
 
-
+    # checkpoint里有两份权重，yolox是会额外存一个ema的权重
+    # ema problem：https://githubhot.com/repo/open-mmlab/mmdetection/issues/6156
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
     if 'CLASSES' in checkpoint.get('meta', {}):
         model.CLASSES = checkpoint['meta']['CLASSES']

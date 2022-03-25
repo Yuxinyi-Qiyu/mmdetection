@@ -183,7 +183,7 @@ def tuple_to_dict(cand_tuple, panas_layer):
 
 def check_cand(cand_tuple, search_head, search_neck, search_backbone, panas_layer):
     cand_tmp = list(cand_tuple)
-
+    #[0.4911868497913349, 2, 0, 0, 2, 2, 96, 4, 0, 2, 0]
     if not search_head:
         cand_tmp[panas_layer] = [-1]
     if not search_neck:
@@ -244,7 +244,7 @@ def get_test_data(data_cfg, distributed, args):
     return dataset, data_loader
 
 
-def get_model_data(args):
+def get_model_data(args): # 载入权重
     assert args.out or args.eval or args.format_only or args.show \
            or args.show_dir, \
         ('Please specify at least one operation (save/eval/format/show the '
@@ -265,6 +265,7 @@ def get_model_data(args):
         torch.backends.cudnn.benchmark = True
 
     cfg.model.pretrained = None
+    # ??
     if cfg.model.get('neck'):
         if isinstance(cfg.model.neck, list):
             for neck_cfg in cfg.model.neck:
@@ -349,6 +350,7 @@ def get_model_data(args):
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
+
     model = build_detector(
         cfg.model,
         train_cfg=cfg.get('train_cfg'),
@@ -358,6 +360,12 @@ def get_model_data(args):
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
+
+    # print("cfg.model")
+    # print(cfg.model)
+    # print("args.checkpoint")
+    # print(args.checkpoint)
+
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
 
     if args.fuse_conv_bn:

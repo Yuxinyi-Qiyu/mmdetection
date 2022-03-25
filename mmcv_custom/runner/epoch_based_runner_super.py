@@ -88,10 +88,15 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
             widen_factor_range = self.widen_factor_range[0] # todo ??  ([0,1],)
             deepen_factor_range = self.deepen_factor_range[0] # todo??
             # todo: arch['widen_factor'] = np.random.uniform(widen_factor_range[0], widen_factor_range[1]) * self.base_channel // self.w_interval * self.w_interval #[0,1]
-            arch['widen_factor'] = np.random.uniform(widen_factor_range[0]+0.01, widen_factor_range[1]) #[0,1]
-            arch['deepen_factor'] = deepen_factor_range[np.random.randint(0, 2)]
-            # print("arch['widen_factor']:"+str(arch['widen_factor']))
-            # print("arch['deepen_factor']:"+str(arch['deepen_factor']))
+            arch['widen_factor'] = []
+            arch['deepen_factor'] = []
+            for i in range(5):
+                arch['widen_factor'].append(widen_factor_range[np.random.randint(0, len(widen_factor_range))]) #todo [0,1]
+                # arch['widen_factor'].append(np.random.uniform(widen_factor_range[0]+0.001, widen_factor_range[1]+0.001)) #todo [0,1]
+            for i in range(4):
+                arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
+            print("arch['widen_factor']:"+str(arch['widen_factor']))
+            print("arch['deepen_factor']:"+str(arch['deepen_factor']))
             #todo: deepen是随机生成数组下标，要改
         # if self.search_neck:
         #     arch['panas_arch'] = [np.random.randint(self.panas_type) for i in range(self.panas_d_range[1])]
@@ -100,16 +105,16 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         #     arch['panas_c'] = np.random.randint(self.panas_c_range[0], self.panas_c_range[
         #         1] + self.c_interval) // self.c_interval * self.c_interval # 随机取base-channel，并保证是16的倍数
 
-        if self.search_head:
-            if self.head_d_range:
-                # arch['head_step'] = self.head_d_range[1]
-                arch['head_step'] = np.random.randint(self.head_d_range[0], self.head_d_range[1] + 1)
-                if max_arch:
-                    arch['head_step'] = self.head_d_range[1]
-                if min_arch:
-                    arch['head_step'] = self.head_d_range[0]
-            else:
-                arch['head_step'] = 1
+        # if self.search_head:
+        #     if self.head_d_range:
+        #         # arch['head_step'] = self.head_d_range[1]
+        #         arch['head_step'] = np.random.randint(self.head_d_range[0], self.head_d_range[1] + 1)
+        #         if max_arch:
+        #             arch['head_step'] = self.head_d_range[1]
+        #         if min_arch:
+        #             arch['head_step'] = self.head_d_range[0]
+        #     else:
+        #         arch['head_step'] = 1
 
         return arch
 

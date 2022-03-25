@@ -62,6 +62,7 @@ class EvolutionSearcher(object):
         # self.cfg.model['search_head'] = True
         self.train_dataset = get_train_data(self.cfg)
         self.cfg = self.cfg.copy()
+        # get_model
         self.model, self.distributed = get_model(self.cfg, self.args)
         self.test_dataset, self.test_data_loader = get_test_data(self.cfg.data.test, self.distributed, self.args)
         # self.train_dataset, self.train_data_loader = get_test_data(self.cfg.data.train, self.distributed, self.args)
@@ -197,7 +198,7 @@ class EvolutionSearcher(object):
         del model
         return params, flops, cfg
 
-    def is_legal(self, arch, **kwargs):
+    def is_legal(self, arch, **kwargs): # ！
         rank, world_size = get_dist_info()
         cand = dict_to_tuple(arch)
         with open(self.log_dir + '_gpu_{}.txt'.format(rank), 'a') as f:
@@ -209,7 +210,7 @@ class EvolutionSearcher(object):
         if 'visited' in info:
             return False
         print(arch)
-        size, fp, cfg = self.get_param(arch)
+        size, fp, cfg = self.get_param(arch) # 获得子网的参数量和flops
         # size, fp, cfg = 0, 0, 0
         size = get_broadcast_cand(size, self.distributed, rank)
         fp = get_broadcast_cand(fp, self.distributed, rank)
@@ -221,8 +222,9 @@ class EvolutionSearcher(object):
         info['size'] = size
         info['cfg'] = cfg
         del size, fp, cfg
-        self.model.set_arch(arch, **kwargs)
+        self.model.set_arch(arch, **kwargs) # 把当前子网设置成arch的配置
 
+        # 获得map
         map = get_cand_map(self.model, self.args, self.distributed, self.cfg, self.test_data_loader, self.test_dataset)
         # map = tuple([0.]*6)
         if not isinstance(map, tuple):
@@ -231,8 +233,8 @@ class EvolutionSearcher(object):
             else:
                 map = tuple([0.])
         if not map:
-            map = tuple([0.] * 6)
-        map = get_broadcast_cand(map, self.distributed, rank)
+            map = tuple([0.] * 6) # 数组，方便保存
+        map = get_broadcast_cand(map, self.distributed, rank) # 对map广播
         torch.cuda.empty_cache()
 
         if map:
@@ -240,6 +242,7 @@ class EvolutionSearcher(object):
             info['map_list'] = map
             info['visited'] = True
             del map
+            # 存入精度
             return True
 
         return False
@@ -267,23 +270,25 @@ class EvolutionSearcher(object):
     def get_random(self, num):
         print('random select ........')
 
+        # 架构编码
+        # iter生成了一系列自网络
         cand_iter = self.stack_random_cand(
             lambda: {'panas_arch': tuple([np.random.randint(self.panas_state) for i in range(self.panas_layer)]),
                      'panas_c': np.random.randint(self.panas_c_range[0], self.panas_c_range[1]) // 16 * 16,
                      'panas_d': np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1),
-                     'cb_type': np.random.randint(self.cb_type),
+                     'cb_type': np.random.randint(self.cb_type), # backbone种类
                      'cb_step': np.random.randint(1, self.cb_step + 1),
-                     'head_step': np.random.randint(self.head_d_range[0],
+                     'head_step': np.random.randint(self.head_d_range[0], # head层数
                                                     self.head_d_range[1] + 1) if 'cascade' in self.args.config else 0,
 
                      })
         while len(self.candidates) < num:
             cand = next(cand_iter)
             rank, world_size = get_dist_info()
-            cand = get_broadcast_cand(cand, self.distributed, rank)
-            cand_tuple = dict_to_tuple(cand)
+            cand = get_broadcast_cand(cand, self.distributed, rank) # 广播 多卡同步
+            cand_tuple = dict_to_tuple(cand) # cand是dict，转换成数组
             cand_tuple = check_cand(cand_tuple, self.search_head, self.search_neck, self.search_backbone,
-                                    self.panas_layer)
+                                    self.panas_layer) # 检查panas arch，把panas d后面的数设置为-1
             cand = tuple_to_dict(cand_tuple, self.panas_layer)
             if not self.is_legal(cand):
                 continue
@@ -299,7 +304,7 @@ class EvolutionSearcher(object):
 
         print('random_num = {}'.format(len(self.candidates)))
 
-    def get_mutation(self, k, mutation_num, m_prob):
+    def get_mutation(self, k, mutation_num, m_prob): # 变异25次
         assert k in self.keep_top_k
         print('mutation ......')
         res = []
@@ -350,7 +355,7 @@ class EvolutionSearcher(object):
         print('mutation_num = {}'.format(len(res)))
         return res
 
-    def get_crossover(self, k, crossover_num):
+    def get_crossover(self, k, crossover_num): # 交叉25次
         assert k in self.keep_top_k
         print('crossover ......')
         res = []

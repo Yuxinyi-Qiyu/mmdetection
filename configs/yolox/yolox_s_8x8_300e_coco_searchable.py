@@ -1,18 +1,32 @@
-_base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
+_base_ = [
+    '../_base_/schedules/schedule_1x.py',
+    '../_base_/default_runtime.py'
+]
 # checkpoint_config = dict(interval=interval)
 # todo: search_head等参数，按照学姐cfg文件格式改！
 checkpoint_config = dict(type='CheckpointHook_nolog', interval=1)
-# runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-
-panas_c_range = [16, 64]
-widen_factor_range = [0, 1]
+primitives = [
+            'conv1x1', 'conv3x3', 'conv5x5'
+        ]
+# panas_c_range = [16, 64]
+# widen_factor_range = [0, 1.0]
+widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
 deepen_factor_range = [0.33, 1]
 search_backbone = True
 search_neck = True
 search_head = False
 img_scale = (640, 640)
+panas_type = len(primitives)
+panas_c_range = [64, 256]
+panas_d_range = [1, 5]
+head_d_range = [1, 3]
+cb_step = 2
+cb_type = 1
+init_c = panas_c_range[1] + 16
 
-runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
+
+runner = dict(type='EpochBasedRunnerSuper', max_epochs=1,
               panas_c_range=panas_c_range,
               widen_factor_range=widen_factor_range,
               deepen_factor_range=deepen_factor_range,
@@ -20,7 +34,7 @@ runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
               search_neck=search_neck,
               search_head=search_head
               )
-
+# runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
 log_config = dict(
     interval=50,
     hooks=[
@@ -28,6 +42,9 @@ log_config = dict(
         # dict(type='TensorboardLoggerHook')
     ])
 find_unused_parameters=True
+
+
+
 
 optimizer = dict(
     type='SGD',
@@ -37,6 +54,7 @@ optimizer = dict(
     nesterov=True,
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
 optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
+
 
 
 
@@ -52,9 +70,10 @@ model = dict(
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
         # deepen_factor=0.33,
-        deepen_factor=1.0,
+        deepen_factor=[1.0, 1.0, 1.0, 1.0],
         # widen_factor=0.5,
-        widen_factor=1.0),
+        # widen_factor=1.0,
+        widen_factor=widen_factor),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
@@ -108,6 +127,7 @@ train_dataset = dict(
     dataset=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/instances_val2017.json',
+        # ann_file=data_root + 'annotations/0.01minival.json',
         img_prefix=data_root + 'val2017/',
         # ann_file=data_root + 'annotations/instances_train2017.json',
         # img_prefix=data_root + 'train2017/',
@@ -138,18 +158,21 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8, # 8张卡；2张卡是32
+    # samples_per_gpu=8, # 8张卡；2张卡是32
+    samples_per_gpu=16, # 8张卡；2张卡是32
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
+        ann_file=data_root + 'annotations/0.01minival.json',
+        # ann_file=data_root + 'annotations/instances_val2017.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
+        ann_file=data_root + 'annotations/0.01minival.json',
+        # ann_file=data_root + 'annotations/instances_val2017.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 
@@ -197,7 +220,8 @@ evaluation = dict(
     # less than ‘max_epochs - num_last_epochs’.
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
-    interval=interval,
-    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
+    # interval=interval,
+    interval=1,
+    # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='bbox')
 

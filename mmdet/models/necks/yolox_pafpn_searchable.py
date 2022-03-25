@@ -56,6 +56,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
 
         # build top-down blocks
         # in_channels=[128, 256, 512],
+        # in_channels=[256, 512, 1024],
         #         out_channels=128,
         #         num_csp_blocks=1
         self.upsample = nn.Upsample(**upsample_cfg)
@@ -131,16 +132,24 @@ class YOLOXPAFPN_Searchable(BaseModule):
 
     def set_arch(self, arch, **kwargs):
         widen_factor = arch['widen_factor']
-        in_channels = self.in_channels
+        # in_channels = self.in_channels  todo 不知道为什么这么赋值之后，在下一次进入的时候self就变了
+        in_channels = [256, 512, 1024]
         out_channels = self.out_channels
         # base_channel = int(in_channels[0] * widen_factor // 16 * 16) # todo：改成以in_channel为基准的
-        base_channel = max(int(64 * widen_factor // 16 * 16), 16)
-        base_channel = base_channel * 4
+        # base_channel = max(int(64 * widen_factor // 16 * 16), 16)
+        # base_channel = base_channel * 4
+        # print("in_channels")
+        # print(in_channels)
+        for i in range(len(in_channels)):
+            in_channels[i] = int(in_channels[i] * widen_factor[i + 2] // 16 * 16)
+            if in_channels[i] == 0:
+                in_channels[i] = 16
 
         # print("base_channel:"+str(base_channel))
-
+        # print("in_channels")
+        # print(in_channels)
         # factor = [4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
-        factor = [1 ,2, 4] # 每个stage的in_channel对应basechannel的倍数
+        # factor = [1 ,2, 4] # 每个stage的in_channel对应basechannel的倍数
         # widen_factor = 0.5
         expansion_ratio = 0.5 # todo 搞清楚这是个啥
 
@@ -150,15 +159,19 @@ class YOLOXPAFPN_Searchable(BaseModule):
 
         for idx in range(len(self.in_channels) - 1):
             # reduce_layers
-            in_channel = base_channel * factor[len(factor) - 1 - idx]
-            out_channel = base_channel * factor[len(factor) - 1 - idx - 1]
+            # in_channel = base_channel * factor[len(factor) - 1 - idx]
+            # out_channel = base_channel * factor[len(factor) - 1 - idx - 1]
+            in_channel = in_channels[len(in_channels) - 1 - idx]
+            out_channel = in_channels[len(in_channels) - 1 - idx - 1]
             self.reduce_layers[idx].conv.in_channels, self.reduce_layers[idx].conv.out_channels = in_channel, out_channel
             self.reduce_layers[idx].bn.num_features = out_channel
             # top_down_blocks
             mid_channel = int(out_channel * expansion_ratio)
-            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = in_channel, mid_channel
+            # self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = in_channel, mid_channel
+            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = out_channel * 2, mid_channel
             self.top_down_blocks[idx].main_conv.bn.num_features = mid_channel
-            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = in_channel, mid_channel
+            # self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = in_channel, mid_channel
+            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = out_channel * 2, mid_channel
             self.top_down_blocks[idx].short_conv.bn.num_features = mid_channel
             self.top_down_blocks[idx].final_conv.conv.in_channels, self.top_down_blocks[idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel
             self.top_down_blocks[idx].final_conv.bn.num_features = out_channel
@@ -175,14 +188,16 @@ class YOLOXPAFPN_Searchable(BaseModule):
 
         for idx in range(len(self.in_channels) - 1):
             # downsamples
-            channel = base_channel * factor[idx] # 128
+            # channel = base_channel * factor[idx] # 128
+            channel = in_channels[idx]
             # print(self.downsamples)
             # print(self.downsamples[0].conv)
             self.downsamples[idx].conv.in_channels, self.downsamples[idx].conv.out_channels = channel, channel
             self.downsamples[idx].bn.num_features = channel
             # bottom_up_blocks
             in_channel = channel * 2 # 256
-            out_channel = base_channel * factor[idx + 1] # 256
+            # out_channel = base_channel * factor[idx + 1] # 256
+            out_channel = in_channels[idx + 1]
             mid_channel = int(out_channel * 0.5) # 128
             self.bottom_up_blocks[idx].main_conv.conv.in_channels, self.bottom_up_blocks[
                 idx].main_conv.conv.out_channels = in_channel, mid_channel
@@ -205,8 +220,9 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
         # upsample?
         # out_convs
-        for idx in range(len(self.in_channels)):
-            in_channel = base_channel * factor[idx]
+        for idx in range(len(in_channels)):
+            # in_channel = base_channel * factor[idx]
+            in_channel = in_channels[idx]
             out_channel = out_channels #todo 现在都是固定的，以后改成可变的
             self.out_convs[idx].conv.in_channels = in_channel
             # self.out_convs[idx].conv.in_channels, self.out_convs[idx].conv.out_channels = channel, out_channel
