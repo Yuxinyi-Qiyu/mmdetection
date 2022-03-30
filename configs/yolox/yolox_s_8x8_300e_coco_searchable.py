@@ -12,7 +12,7 @@ primitives = [
 # widen_factor_range = [0, 1.0]
 widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
 widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
-deepen_factor_range = [0.33, 1]
+deepen_factor_range = [0.33, 1.0]
 search_backbone = True
 search_neck = True
 search_head = False
@@ -26,7 +26,7 @@ cb_type = 1
 init_c = panas_c_range[1] + 16
 
 
-runner = dict(type='EpochBasedRunnerSuper', max_epochs=1,
+runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
               panas_c_range=panas_c_range,
               widen_factor_range=widen_factor_range,
               deepen_factor_range=deepen_factor_range,
@@ -35,12 +35,12 @@ runner = dict(type='EpochBasedRunnerSuper', max_epochs=1,
               search_head=search_head
               )
 # runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-log_config = dict(
-    interval=50,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        # dict(type='TensorboardLoggerHook')
-    ])
+# log_config = dict(
+#     interval=50,
+#     hooks=[
+#         dict(type='TextLoggerHook'),
+#         # dict(type='TensorboardLoggerHook')
+#     ])
 find_unused_parameters=True
 
 
@@ -53,8 +53,8 @@ optimizer = dict(
     weight_decay=5e-4,
     nesterov=True,
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
-
+# optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
+optimizer_config = dict(grad_clip=None)
 
 
 
@@ -126,11 +126,11 @@ train_dataset = dict(
     type='MultiImageMixDataset',
     dataset=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
+        # ann_file=data_root + 'annotations/instances_val2017.json',
         # ann_file=data_root + 'annotations/0.01minival.json',
-        img_prefix=data_root + 'val2017/',
-        # ann_file=data_root + 'annotations/instances_train2017.json',
-        # img_prefix=data_root + 'train2017/',
+        # img_prefix=data_root + 'val2017/',
+        ann_file=data_root + 'annotations/instances_train2017.json',
+        img_prefix=data_root + 'train2017/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations', with_bbox=True)
@@ -158,8 +158,8 @@ test_pipeline = [
 ]
 
 data = dict(
-    # samples_per_gpu=8, # 8张卡；2张卡是32
-    samples_per_gpu=16, # 8张卡；2张卡是32
+    samples_per_gpu=8, # 8张卡；2张卡是32
+    # samples_per_gpu=16, # 8张卡；2张卡是32
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
@@ -221,7 +221,9 @@ evaluation = dict(
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
     # interval=interval,
-    interval=1,
+    interval=10,
     # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='bbox')
+
+log_config = dict(interval=50)
 

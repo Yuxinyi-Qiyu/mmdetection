@@ -49,14 +49,15 @@ class EvolutionSearcher(object):
     def __init__(self, args):
         self.args = args
         self.max_epochs = args.max_epochs # 20
-        self.select_num = args.select_num # 10
+        # self.select_num = args.select_num # 10
+        self.select_num = 5 # 10
         # self.population_num = args.population_num # 50
-        self.population_num = 10
+        self.population_num = 5
         self.m_prob = args.m_prob # 0.1
         # self.crossover_num = args.crossover_num # 25
-        self.crossover_num = 5
+        self.crossover_num = 3
         # self.mutation_num = args.mutation_num # 25
-        self.mutation_num = 5
+        self.mutation_num = 3
         self.flops_limit = args.flops_limit # None (float) # 17.651 M 122.988 GFLOPS
         self.input_shape = (3,) + tuple(args.shape) # default=[1280, 800]  [3,1280,800] todo?
 
@@ -69,9 +70,6 @@ class EvolutionSearcher(object):
         self.train_dataset = get_train_data(self.cfg)
         self.cfg = self.cfg.copy()
 
-        self.widen_factor_range = self.cfg.get('widen_factor_range', None)
-        self.deepen_factor_range = self.cfg.get('deepen_factor_range', None))
-
         print("before get model")
         # bug!! The model and loaded state dict do not match exactly # todo
         self.model, self.distributed = get_model(self.cfg, self.args)
@@ -81,6 +79,8 @@ class EvolutionSearcher(object):
         self.test_dataset, self.test_data_loader = get_test_data(self.cfg.data.test, self.distributed, self.args)
         # self.train_dataset, self.train_data_loader = get_test_data(self.cfg.data.train, self.distributed, self.args)
 
+        self.widen_factor_range = self.cfg.get('widen_factor_range', None)
+        self.deepen_factor_range = self.cfg.get('deepen_factor_range', None)
         self.panas_c_range = self.cfg.get('panas_c_range', None) # panas_c_range = [16, 64]
         self.panas_d_range = self.cfg.get('panas_d_range', None) # None
         self.head_d_range = self.cfg.get('head_d_range', None)
@@ -148,8 +148,8 @@ class EvolutionSearcher(object):
         return cand
 
     def get_param(self, cand): # todo
-        # panas_arch = [self.primitives[i] for i in cand['panas_arch'][:cand['panas_d']]]
-        panas_arch = cand
+
+        panas_arch = cand # {'widen_factor': (0.625, 0.5, 0.375, 0.125, 0.125), 'deepen_factor': (0.33, 0.33, 1, 1)}
         cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_coco_searchable.py')
 
         if args.cfg_options is not None:
@@ -189,20 +189,20 @@ class EvolutionSearcher(object):
                 'FLOPs counter is currently not currently supported with {}'.
                     format(model.__class__.__name__))
         # flops_, params_ = get_model_complexity_info(model, self.input_shape)
-        flops, params = get_model_complexity_info(model, self.input_shape, as_strings=False, print_per_layer_stat=False)
+        flops, params = get_model_complexity_info(model, self.input_shape, as_strings=False, print_per_layer_stat=False) # todo：如何在这里根据深度变化改变获取复杂度的结果？
         flops = round(flops / 10. ** 9, 2)
         params = round(params / 10 ** 6, 2)
 
-        print(params, flops, cand, panas_arch) #46.01 50.05 {'widen_factor': 0.4911868497913349} {'widen_factor': 0.4911868497913349}
+        # print(params, flops, cand, panas_arch) #46.01 50.05 {'widen_factor': 0.4911868497913349} {'widen_factor': 0.4911868497913349}
 
         torch.cuda.empty_cache()
         del model
         return params, flops, cfg
 
     def is_legal(self, arch, **kwargs):
-        # cand = {'widen_factor':cand_tuple[0]}
+        # cand = {'widen_factor': (0.625, 0.5, 0.375, 0.125, 0.125), 'deepen_factor': (0.33, 0.33, 1, 1)}
         rank, world_size = get_dist_info() # 0,1
-        cand = dict_to_tuple(arch) # (0.4911868497913349,)
+        cand = dict_to_tuple(arch) # (0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1)
 
         with open(self.log_dir + '_gpu_{}.txt'.format(rank), 'a') as f:
             f.write(str(cand) + '\n')
@@ -212,9 +212,9 @@ class EvolutionSearcher(object):
         info = self.vis_dict[cand]
         if 'visited' in info:
             return False
-        print(arch) # {'widen_factor': 0.4911868497913349}
+
         size, fp, cfg = self.get_param(arch)
-        print(size, fp) # 46.01 50.05 Config
+        # print(size, fp) # 46.01 50.05 Config
         # size, fp, cfg = 0, 0, 0
         size = get_broadcast_cand(size, self.distributed, rank)
         fp = get_broadcast_cand(fp, self.distributed, rank)
@@ -252,7 +252,7 @@ class EvolutionSearcher(object):
 
         return False
 
-    def update_top_k(self, candidates, *, k, key, reverse=True):
+    def update_top_k(self, candidates, *, k, key, reverse=True): # 筛选key排前k个结构
         assert k in self.keep_top_k
         print('select ......')
         t = self.keep_top_k[k]
@@ -272,33 +272,27 @@ class EvolutionSearcher(object):
                 info = self.vis_dict[cand]
             for cand in cands:
                 yield cand
-        print("cand")
-        print(cand)
-        print("info")
-        print(info)
+        # print("cand")
+        # print(cand)
+        # print("info")
+        # print(info)
 
     def get_random(self, num): # num=population_num
         print('random select ........')
-        # lambda: {'panas_arch': tuple([np.random.randint(self.panas_state) for i in range(self.panas_layer)]),
-        # AttributeError: 'EvolutionSearcher' object has no attribute 'panas_layer'
         cand_iter = self.stack_random_cand(
             lambda: {
-                     # 'widen_factor': np.random.uniform(self.widen_factor_range[0] + 0.01, self.widen_factor_range[1])
                      'widen_factor': tuple([self.widen_factor_range[np.random.randint(0, len(self.widen_factor_range))] for i in range(5)]),
                      'deepen_factor': tuple([self.deepen_factor_range[np.random.randint(0, len(self.deepen_factor_range))] for i in range(4)]) # tuple-->(1,2,3,4)/no tuple-->[1,2,3,4]
                     })
         while len(self.candidates) < num: # 候选子网少于population num
             cand = next(cand_iter) # 再生成一个arch
+            # cand: {'widen_factor': (0.625, 0.5, 0.375, 0.125, 0.125), 'deepen_factor': (0.33, 0.33, 1, 1)}
             rank, world_size = get_dist_info()
             cand = get_broadcast_cand(cand, self.distributed, rank)
-            cand_tuple = dict_to_tuple(cand) # (0.4911868497913349,) // (0.4911868497913349, 2, 0, 0, 2, 2)
-            # (0.4911868497913349, 2, 0, 0, 2, 2, 96, 4, 0, 2, 0)
+            cand_tuple = dict_to_tuple(cand) # (0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1)
             # cand_tuple = check_cand(cand_tuple, self.search_head, self.search_neck, self.search_backbone,
-            #                         self.panas_layer)
-            # (0.4911868497913349, 2, 0, 0, 2, [-1], 96, 4, 0, 2, 0)
-            # cand = tuple_to_dict(cand_tuple, self.panas_layer)
-            # {'panas_arch': (0.4911868497913349, 2, 0, 0, 2), 'panas_c': [-1], 'panas_d': 96, 'cb_type': 4, 'cb_step': 0, 'head_step': 2}
-            cand = {'widen_factor':cand_tuple[0]}
+            #                         self.panas_layer) # 检查panas arch，把panas d后面的数设置为-1  目前不用check
+            cand = tuple_to_dict(cand_tuple) # {'widen_factor': (0.625, 0.5, 0.375, 0.125, 0.125), 'deepen_factor': (0.33, 0.33, 1, 1)}
             if not self.is_legal(cand):
                 continue
 
@@ -315,42 +309,40 @@ class EvolutionSearcher(object):
 
         print('random_num = {}'.format(len(self.candidates)))
         print(self.candidates)
+        # [(0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1),
+        # (0.5, 1.0, 0.25, 1.0, 1.0, 1, 0.33, 1, 1),
+        # (1.0, 0.75, 1.0, 0.5, 1.0, 1, 1, 1, 1),
+        # (0.375, 0.125, 1.0, 0.25, 0.75, 0.33, 1, 1, 0.33),
+        # (0.625, 0.5, 0.375, 0.75, 0.625, 0.33, 1, 1, 0.33)]
 
     def get_mutation(self, k, mutation_num, m_prob): # self.select_num, self.mutation_num, self.m_prob
+        # 5 3 0.1
         assert k in self.keep_top_k
         print('mutation ......')
         res = []
         iter = 0
-        max_iters = mutation_num * 10
+        max_iters = mutation_num * 10 # 30
 
         def random_func():
-            cand = list(choice(self.keep_top_k[k]))
-
-            for i in range(self.panas_layer):
+            cand = list(choice(self.keep_top_k[k])) #[0.5, 1.0, 0.25, 1.0, 1.0, 1.0, 0.33, 1.0, 1.0]
+            for i in range(5): # 变结构在层数里进行变异 # todo 怎么改
                 if np.random.random_sample() < m_prob:
-                    cand[i] = np.random.randint(self.panas_state)
-            if np.random.random_sample() < m_prob:
-                cand[self.panas_layer] = np.random.randint(self.panas_c_range[0], self.panas_c_range[1]) // 16 * 16
-            depth_now = cand[self.panas_layer + 1]
-            if np.random.random_sample() < m_prob:
-                depth = np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1)
-                if depth < depth_now:
-                    cand[self.panas_layer + 1] = depth
-                elif depth > depth_now:
-                    for i in range(depth_now, depth):
-                        cand[i] = np.random.randint(self.panas_state)
+                    cand[i] = self.widen_factor_range[np.random.randint(0, len(self.widen_factor_range))]
+            for i in range(4):
+                if np.random.random_sample() < m_prob:
+                    cand[i + 5] = self.deepen_factor_range[np.random.randint(0, len(self.deepen_factor_range))]
 
             return tuple(cand)
 
-        cand_iter = self.stack_random_cand(random_func)
-        while len(res) < mutation_num and max_iters > 0:
+        cand_iter = self.stack_random_cand(random_func) # 根据mutation函数，随机生成结构
+        while len(res) < mutation_num and max_iters > 0: # res个数少于mutation num，且没有达到最大迭代次数
             max_iters -= 1
             cand_tuple = next(cand_iter)
             rank, world_size = get_dist_info()
             cand_tuple = get_broadcast_cand(cand_tuple, self.distributed, rank)
-            cand_tuple = check_cand(cand_tuple, self.search_head, self.search_neck, self.search_backbone,
-                                    self.panas_layer)
-            cand = tuple_to_dict(cand_tuple, self.panas_layer)
+            # cand_tuple = check_cand(cand_tuple, self.search_head, self.search_neck, self.search_backbone,
+            #                         self.panas_layer)
+            cand = tuple_to_dict(cand_tuple)
             cand = get_broadcast_cand(cand, self.distributed, rank)
 
             if not self.is_legal(cand):
@@ -398,7 +390,7 @@ class EvolutionSearcher(object):
             return tuple(cand)
 
         cand_iter = self.stack_random_cand(random_func)
-        while len(res) < crossover_num and max_iters > 0:
+        while len(res) < crossover_num and max_iters > 0: # res中的子网数 少于3
             max_iters -= 1
             cand_tuple = next(cand_iter)
             rank, world_size = get_dist_info()
@@ -440,20 +432,25 @@ class EvolutionSearcher(object):
 
         self.get_random(self.population_num)
 
-        while self.epoch < self.max_epochs:  # 0,20
+        while self.epoch < self.max_epochs:  # 0, 20
             print('epoch = {}'.format(self.epoch))
 
             self.memory.append([])
-            for cand in self.candidates: # ?? # todo 应该在这里就把factor进行统一，是几个选项中的随机
+            for cand in self.candidates:
                 self.memory[-1].append(cand)
             print("self.memory")
             print(self.memory) # 候选子网
-            # [[(0.4911868497913349,), (0.6888551943359122,), (0.9857202901549829,), (0.2036404460606003,), (0.5875775567487878,), (0.9807763553283119,), (0.18867549441605322,), (0.7044539487313805,), (0.8478464501767815,), (0.7987422023007866,)]]
-            # 这里就已经把map求出来了，如何求的？
+            # [[(0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1), (0.5, 1.0, 0.25, 1.0, 1.0, 1, 0.33, 1, 1), (1.0, 0.75, 1.0, 0.5, 1.0, 1, 1, 1, 1), (0.375, 0.125, 1.0, 0.25, 0.75, 0.33, 1, 1, 0.33), (0.625, 0.5, 0.375, 0.75, 0.625, 0.33, 1, 1, 0.33)]]
+            # 意义？
             self.update_top_k(
                 self.candidates, k=self.select_num, key=lambda x: self.vis_dict[x]['map'])
+            print("update top_k")
+            print("self.candidates")
+            print(self.candidates)
             self.update_top_k(
                 self.candidates, k=50, key=lambda x: self.vis_dict[x]['map'])
+            print(self.candidates)
+
 
             print('epoch = {} : top {} result'.format(
                 self.epoch, len(self.keep_top_k[50])))
@@ -462,8 +459,7 @@ class EvolutionSearcher(object):
             for i, cand in enumerate(self.keep_top_k[50]):
                 print('No.{} {} Top-1 map = {}'.format(
                     i + 1, cand, self.vis_dict[cand]['map']))
-                # cand_dict = tuple_to_dict(cand, self.panas_layer)
-                cand_dict = {'widen_factor':cand[0]}
+                cand_dict = tuple_to_dict(cand)
 
                 panas_arch = [cand]
                 # , AP {}, {} M, {} GFLOPS
@@ -474,20 +470,12 @@ class EvolutionSearcher(object):
                                                                           self.vis_dict[cand]['fp']
                                                                           ))
 
-                # panas_arch = [self.primitives[i] for i in cand_dict['panas_arch'][:cand_dict['panas_d']]]
-                # logging.info(
-                #     'No.{} arch: {}, {}, AP = {},  {} M, {} GLOPS'.format(i + 1, cand_dict, panas_arch,
-                #                                                           self.vis_dict[cand]['map_list'],
-                #                                                           self.vis_dict[cand]['size'],
-                #                                                           self.vis_dict[cand]['fp']))
+            mutation = self.get_mutation(
+                self.select_num, self.mutation_num, self.m_prob)
+            print("mutation over")
+            crossover = self.get_crossover(self.select_num, self.crossover_num)
 
-            # channel太少，搜索空间太小，不用mutation、crossover
-
-            # mutation = self.get_mutation(
-            #     self.select_num, self.mutation_num, self.m_prob)
-            # crossover = self.get_crossover(self.select_num, self.crossover_num)
-            #
-            # self.candidates = mutation + crossover
+            self.candidates = mutation + crossover
 
             self.get_random(self.population_num)
 

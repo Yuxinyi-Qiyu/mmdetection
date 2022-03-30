@@ -170,20 +170,16 @@ def dict_to_tuple(arch):
     return cand_tuple
 
 
-def tuple_to_dict(cand_tuple, panas_layer):
-    arch = {'panas_arch': cand_tuple[:panas_layer],
-            'panas_c': cand_tuple[panas_layer],
-            'panas_d': cand_tuple[panas_layer + 1],
-            'cb_type': cand_tuple[panas_layer + 2],
-            'cb_step': cand_tuple[panas_layer + 3],
-            'head_step': cand_tuple[panas_layer + 4]
+def tuple_to_dict(cand_tuple):
+    arch = {'widen_factor': cand_tuple[:5],
+            'deepen_factor': cand_tuple[5:]
             }
     return arch
 
 
 def check_cand(cand_tuple, search_head, search_neck, search_backbone, panas_layer):
     cand_tmp = list(cand_tuple)
-    #[0.4911868497913349, 2, 0, 0, 2, 2, 96, 4, 0, 2, 0]
+    #[0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1]
     if not search_head:
         cand_tmp[panas_layer] = [-1]
     if not search_neck:

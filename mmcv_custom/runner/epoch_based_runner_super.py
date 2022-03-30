@@ -95,8 +95,8 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
                 # arch['widen_factor'].append(np.random.uniform(widen_factor_range[0]+0.001, widen_factor_range[1]+0.001)) #todo [0,1]
             for i in range(4):
                 arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
-            print("arch['widen_factor']:"+str(arch['widen_factor']))
-            print("arch['deepen_factor']:"+str(arch['deepen_factor']))
+            # print("arch['widen_factor']:"+str(arch['widen_factor']))
+            # print("arch['deepen_factor']:"+str(arch['deepen_factor']))
             #todo: deepen是随机生成数组下标，要改
         # if self.search_neck:
         #     arch['panas_arch'] = [np.random.randint(self.panas_type) for i in range(self.panas_d_range[1])]
