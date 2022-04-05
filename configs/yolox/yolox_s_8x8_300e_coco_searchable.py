@@ -93,6 +93,8 @@ model = dict(
 # dataset settings
 data_root = 'data/coco/'
 dataset_type = 'CocoDataset'
+# data_root = 'data/VOCdevkit/'
+# dataset_type = 'VOCDataset'
 
 train_pipeline = [
     dict(type='Mosaic', img_scale=img_scale, pad_val=114.0),
@@ -165,14 +167,14 @@ data = dict(
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/0.01minival.json',
-        # ann_file=data_root + 'annotations/instances_val2017.json',
+        # ann_file=data_root + 'annotations/0.01minival.json',
+        ann_file=data_root + 'annotations/instances_val2017.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/0.01minival.json',
-        # ann_file=data_root + 'annotations/instances_val2017.json',
+        # ann_file=data_root + 'annotations/0.01minival.json',
+        ann_file=data_root + 'annotations/instances_val2017.json',
         img_prefix=data_root + 'val2017/',
         pipeline=test_pipeline))
 

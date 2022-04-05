@@ -50,14 +50,14 @@ class EvolutionSearcher(object):
         self.args = args
         self.max_epochs = args.max_epochs # 20
         # self.select_num = args.select_num # 10
-        self.select_num = 5 # 10
+        self.select_num = 1 # 10
         # self.population_num = args.population_num # 50
-        self.population_num = 5
+        self.population_num = 2
         self.m_prob = args.m_prob # 0.1
         # self.crossover_num = args.crossover_num # 25
-        self.crossover_num = 3
+        self.crossover_num = 2
         # self.mutation_num = args.mutation_num # 25
-        self.mutation_num = 3
+        self.mutation_num = 2
         self.flops_limit = args.flops_limit # None (float) # 17.651 M 122.988 GFLOPS
         self.input_shape = (3,) + tuple(args.shape) # default=[1280, 800]  [3,1280,800] todo?
 
@@ -178,6 +178,7 @@ class EvolutionSearcher(object):
 
         model = build_detector(
             cfg.model, train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg'))
+        cfg.model.module.set_archs(panas_arch, **kwargs)
         if torch.cuda.is_available():
             model.cuda()
         model.eval()
@@ -192,6 +193,12 @@ class EvolutionSearcher(object):
         flops, params = get_model_complexity_info(model, self.input_shape, as_strings=False, print_per_layer_stat=False) # todo：如何在这里根据深度变化改变获取复杂度的结果？
         flops = round(flops / 10. ** 9, 2)
         params = round(params / 10 ** 6, 2)
+        print("cand")
+        print(cand)
+        print("flops")
+        print(flops)
+        print("params")
+        print(params)
 
         # print(params, flops, cand, panas_arch) #46.01 50.05 {'widen_factor': 0.4911868497913349} {'widen_factor': 0.4911868497913349}
 
@@ -349,9 +356,8 @@ class EvolutionSearcher(object):
                 continue
             res.append(cand_tuple)
             print('mutation {}/{}'.format(len(res), mutation_num))
-            panas_arch = [self.primitives[i] for i in cand['panas_arch'][:cand['panas_d']]]
             logging.info(
-                'mutation {}/{}, arch: {}, {}, AP {}, {} M, {} GFLOPS'.format(len(res), mutation_num, cand, panas_arch,
+                'mutation {}/{}, arch: {}, AP {}, {} M, {} GFLOPS'.format(len(res), mutation_num, cand,
                                                                               self.vis_dict[cand_tuple][
                                                                                   'map_list'],
                                                                               self.vis_dict[cand_tuple]['size'],
@@ -368,24 +374,30 @@ class EvolutionSearcher(object):
         max_iters = 10 * crossover_num
 
         def random_func():
-            p1 = choice(self.keep_top_k[k])
+            p1 = choice(self.keep_top_k[k]) # 选两个parent
             p2 = choice(self.keep_top_k[k])
             cand = []
-            len1 = p1[self.panas_layer + 1] # parent1的深度
-            len2 = p2[self.panas_layer + 1] # parent2的深度
+            factor = [3, 9, 9, 3]
+            len1 = 0
+            len2 = 0
+            for i in range(4):
+                len1 += factor[i] * p1[i + 5]
+                len2 += factor[i] * p2[i + 5]
+            # len1 = p1[self.panas_layer + 1] # parent1的深度
+            # len2 = p2[self.panas_layer + 1] # parent2的深度
             max_len = len1 if len1 > len2 else len2
             min_len = len2 if len1 > len2 else len1
             max_p = p1 if len1 > len2 else p2 # max parent
-            for i in range(len(p1)):
-                rand = np.random.randint(2)
+            for i in range(len(p1)): # p1的每层
+                rand = np.random.randint(2) # 以0.5的概率取两个parent的一个加入新的结构
                 if rand:
                     cand.append(p2[i])
                 else:
                     cand.append(p1[i])
 
-            if cand[self.panas_layer + 1] == max_len:
-                for i in range(min_len, max_len):
-                    cand[i] = max_p[i]
+            # if cand[self.panas_layer + 1] == max_len:
+            #     for i in range(min_len, max_len):
+            #         cand[i] = max_p[i]
 
             return tuple(cand)
 
@@ -395,20 +407,17 @@ class EvolutionSearcher(object):
             cand_tuple = next(cand_iter)
             rank, world_size = get_dist_info()
             cand_tuple = get_broadcast_cand(cand_tuple, self.distributed, rank)
-            cand_tuple = check_cand(cand_tuple, self.search_head, self.search_neck, self.search_backbone,
-                                    self.panas_layer)
-            cand = tuple_to_dict(cand_tuple, self.panas_layer)
+            cand = tuple_to_dict(cand_tuple)
             cand = get_broadcast_cand(cand, self.distributed, rank)
 
             if not self.is_legal(cand):
                 continue
             res.append(cand_tuple)
             print('crossover {}/{}'.format(len(res), crossover_num))
-            panas_arch = [self.primitives[i] for i in cand['panas_arch'][:cand['panas_d']]]
 
             logging.info(
-                'crossover {}/{}, arch: {}, {}, AP {}, {} M, {} GFLOPS'.format(len(res), crossover_num, cand,
-                                                                               panas_arch, self.vis_dict[cand_tuple][
+                'crossover {}/{}, arch: {}, AP {}, {} M, {} GFLOPS'.format(len(res), crossover_num, cand,
+                                                                                self.vis_dict[cand_tuple][
                                                                                    'map_list'],
                                                                                self.vis_dict[cand_tuple]['size'],
                                                                                self.vis_dict[cand_tuple]['fp']))
@@ -470,8 +479,7 @@ class EvolutionSearcher(object):
                                                                           self.vis_dict[cand]['fp']
                                                                           ))
 
-            mutation = self.get_mutation(
-                self.select_num, self.mutation_num, self.m_prob)
+            mutation = self.get_mutation(self.select_num, self.mutation_num, self.m_prob)
             print("mutation over")
             crossover = self.get_crossover(self.select_num, self.crossover_num)
 
