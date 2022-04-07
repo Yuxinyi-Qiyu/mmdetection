@@ -153,7 +153,7 @@ def form_arch(k):
     deepen_factor = []
     if k <= 15: # 0,1,2,...,7//8,9,10,...,15
         for i in range(5):
-            widen_factor.append(widen_factor_range[k])
+            widen_factor.append(widen_factor_range[k % 8])
         if k <= 7:
             deepen_factor = [0.33, 0.33, 0.33, 0.33]
         else:
