@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import time
 import warnings
+import numpy as np
 
 import mmcv
 import torch
@@ -18,6 +19,9 @@ from mmdet.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
 from mmdet.models import build_detector
 from mmdet.utils import setup_multi_processes
+import logging
+import torch.distributed as dist
+
 
 
 def parse_args():
@@ -116,9 +120,80 @@ def parse_args():
         args.eval_options = args.options
     return args
 
+def get_broadcast_cand(arch, rank):
+    # print("func get_broadcast_cand")
+    torch.cuda.synchronize(device=0)
+    time.sleep(2)
+    if isinstance(arch, dict):
+        for key in arch:
+            cand = get_broadcast(arch[key])
+            arch[key] = cand
+    # print("rank")
+    # print(rank)
+    # print("get_broadcast_cand")
+    # print(arch)
+    return arch
+
+def get_broadcast(cand):
+    cand_ori = cand
+    cand = torch.tensor(cand, device='cuda')
+    dist.broadcast(cand, 0)
+    if isinstance(cand_ori, tuple):
+        cand = tuple(cand.tolist())
+    else:
+        cand = cand.item()
+    return cand
+
+
+widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+deepen_factor_range = [0.33, 1.0]
+
+def form_arch(k):
+    widen_factor = []
+    deepen_factor = []
+    if k <= 15: # 0,1,2,...,7//8,9,10,...,15
+        for i in range(5):
+            widen_factor.append(widen_factor_range[k])
+        if k <= 7:
+            deepen_factor = [0.33, 0.33, 0.33, 0.33]
+        else:
+            deepen_factor = [1.0, 1.0, 1.0, 1.0]
+    else: # 16~16+2x8
+        index = (k - 16) % 2
+        factor = (k - 16) // 2
+        for i in range(4):
+            deepen_factor.append(deepen_factor_range[index])
+        for i in range(5):
+            widen_factor.append(widen_factor_range[factor])
+
+    arch = {'widen_factor': tuple(widen_factor), 'deepen_factor': tuple(deepen_factor)}
+
+    return arch
+
+
+
+def get_random_arch():
+    widen_factor = []
+    deepen_factor = []
+    for i in range(5):
+        widen_factor.append(widen_factor_range[np.random.randint(0, len(widen_factor_range))])  # todo [0,1]
+    for i in range(4):
+        deepen_factor.append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
+    arch = {'widen_factor': tuple(widen_factor), 'deepen_factor': tuple(deepen_factor)}
+
+    return arch
 
 def main():
     args = parse_args()
+
+    log_dir = 'corelated'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    times = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    logfile = os.path.join(log_dir, '{}.log'.format(times))
+    logging.basicConfig(filename=logfile, level=logging.INFO)
+
+    # dist.init_process_group('gloo', init_method='file:///tmp/somefile', rank=0, world_size=1)
 
     assert args.out or args.eval or args.format_only or args.show \
         or args.show_dir, \
@@ -220,48 +295,78 @@ def main():
     else:
         model.CLASSES = dataset.CLASSES
 
-    print("here!")
-    # arch = {'widen_factor': (0.875, 0.375, 0.75, 0.5, 0.625), 'deepen_factor': (1, 0.33, 0.33, 1)}
-    # arch = {'widen_factor': (0.125, 0.125, 0.125, 0.125, 0.125), 'deepen_factor': (0.33, 0.33, 0.33, 0.33)}
-    arch = {'widen_factor': (0.625, 0.625, 0.625, 0.625, 0.625), 'deepen_factor': (0.33, 0.33, 0.33, 0.33)}
-    model.set_arch(arch)
-    print("set_arch fin!")
 
-    if not distributed:
-        model = MMDataParallel(model, device_ids=cfg.gpu_ids)
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
-                                  args.show_score_thr)
-    else:
-        model = MMDistributedDataParallel(
-            model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False)
+    for k in range(32):
+        arch = {}
+        rank, world_size = get_dist_info()
+        print("rank=" + str(rank))
+        # arch = get_random_arch()
+        arch = form_arch(k)
+        print(arch)
+        arch = get_broadcast_cand(arch, rank)
 
-        outputs = multi_gpu_test(model, data_loader, args.tmpdir,
-                                 args.gpu_collect)
+        # if rank == 0:
+        #     print("rank="+str(rank))
+        #     arch = get_random_arch()
+        #     print("rank=0")
+        #     print(arch)
+        #     logging.info("cand:" + str(arch))
+        #     dist.send(arch = arch, dst = 1)
+            # arch = get_broadcast_cand(arch, rank)
+        # else:
+        #     print("rank!=0")
+        #     dist.recv(arch = arch, dst = 0)
+            # while True:
+            #     arch = get_broadcast_cand(arch, rank)
+            #     if arch != {}:
+            #         break
 
-    rank, _ = get_dist_info()
-    if rank == 0:
-        if args.out:
-            print(f'\nwriting results to {args.out}')
-            mmcv.dump(outputs, args.out)
-        kwargs = {} if args.eval_options is None else args.eval_options
-        if args.format_only:
-            dataset.format_results(outputs, **kwargs)
-        if args.eval:
-            eval_kwargs = cfg.get('evaluation', {}).copy()
-            # hard-code way to remove EvalHook args
-            for key in [
-                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
-                    'rule', 'dynamic_intervals'
-            ]:
-                eval_kwargs.pop(key, None)
-            eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            metric = dataset.evaluate(outputs, **eval_kwargs)
-            print(metric)
-            metric_dict = dict(config=args.config, metric=metric)
-            if args.work_dir is not None and rank == 0:
-                mmcv.dump(metric_dict, json_file)
+        model.set_arch(arch)
+        # print(arch)
+        print("set_arch fin! "+str(rank))
+
+
+        if not distributed:
+            model_P = MMDataParallel(model, device_ids=cfg.gpu_ids)
+            outputs = single_gpu_test(model_P, data_loader, args.show, args.show_dir,
+                                      args.show_score_thr)
+        else:
+            model_P = MMDistributedDataParallel(
+                model.cuda(),
+                device_ids=[torch.cuda.current_device()],
+                broadcast_buffers=False)
+
+            outputs = multi_gpu_test(model_P, data_loader, args.tmpdir,
+                                     args.gpu_collect)
+
+        rank, _ = get_dist_info()
+        if rank == 0:
+            if args.out:
+                print(f'\nwriting results to {args.out}')
+                mmcv.dump(outputs, args.out)
+            kwargs = {} if args.eval_options is None else args.eval_options
+            if args.format_only:
+                dataset.format_results(outputs, **kwargs)
+            if args.eval:
+                print("args.eval")
+                print("k="+str(k))
+                eval_kwargs = cfg.get('evaluation', {}).copy()
+                # hard-code way to remove EvalHook args
+                for key in [
+                        'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
+                        'rule', 'dynamic_intervals'
+                ]:
+                    eval_kwargs.pop(key, None)
+                eval_kwargs.update(dict(metric=args.eval, **kwargs))
+                metric = dataset.evaluate(outputs, **eval_kwargs)
+                print(metric)
+
+                metric_dict = dict(config=args.config, metric=metric)
+                if args.work_dir is not None and rank == 0:
+                    mmcv.dump(metric_dict, json_file)
+                logging.info("cand:" + str(arch))
+                logging.info("metric_dict:" + str(metric_dict))
+
 
 
 if __name__ == '__main__':
