@@ -3,7 +3,6 @@ _base_ = [
     '../_base_/default_runtime.py'
 ]
 # checkpoint_config = dict(interval=interval)
-# todo: search_head等参数，按照学姐cfg文件格式改！
 checkpoint_config = dict(type='CheckpointHook_nolog', interval=10)
 
 # panas_c_range = [16, 64]
@@ -81,7 +80,7 @@ model = dict(
         out_channels=256,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=80, in_channels=256, feat_channels=256), # feat_channels 是啥
+        type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256), # feat_channels 是啥
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.

@@ -15,7 +15,7 @@ model = dict(
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=80, in_channels=128, feat_channels=128),
+        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -120,6 +120,8 @@ lr_config = dict(
     warmup_iters=5,  # 5 epoch
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05)
+
+runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
 
 custom_hooks = [
     dict(
