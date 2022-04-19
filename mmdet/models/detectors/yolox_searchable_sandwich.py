@@ -8,32 +8,7 @@ from mmcv.runner import get_dist_info
 
 from ..builder import DETECTORS
 from .single_stage import SingleStageDetector
-
-def bn_calibration_init(m):
-    """ calculating post-statistics of batch normalization """
-    if getattr(m, 'track_running_stats', False):
-        # reset all values for post-statistics
-        m.reset_running_stats()
-        # set bn in training mode to update post-statistics
-        m.training = True
-        # if use cumulative moving average
-        if getattr(FLAGS, 'cumulative_bn_stats', False):
-            m.momentum = None
-
-def dist2(tensor_a, tensor_b, attention_mask=None, channel_attention_mask=None):
-    if tensor_a.shape != tensor_b:
-        tensor_a = max_pooling_layer(tensor_a)
-        tensor_b = max_pooling_layer(tensor_b)
-    diff = (tensor_a - tensor_b) ** 2
-    if attention_mask is not None:
-        diff = diff * attention_mask
-    if channel_attention_mask is not None:
-        diff = diff * channel_attention_mask
-    diff = torch.sum(diff) ** 0.5
-    return diff
-
-def max_pooling_layer(x):
-    return reduce(x, 'b c h w -> b 1 h w', 'max')
+from .kd_loss import *
 
 @DETECTORS.register_module()
 class YOLOX_Searchable_Sandwich(SingleStageDetector):
@@ -110,6 +85,8 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
         self.inplace = inplace
         self.arch = None
         self.archs = None
+        self.out_channels = self.neck.out_channels
+        self.kd_weight = kd_weight
         # 不同蒸馏对应的loss计算方法
         if self.inplace == 'L2':
             self.kd_loss = DL2()
@@ -134,36 +111,22 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck."""
 
-        if self.search_backbone:
-            x = self.backbone(img, self.cb_step) #!!
-        else:
-            x = self.backbone(img)
+        print('before self.backbone')
+        x = self.backbone(img)
         if not isinstance(x[0], (list, tuple)):
             x = [x]
-
-        if self.search_neck: # ?
+        print('backbone fin!')
+        if self.search_neck:
             outs = []
             for backbone_out in x:
                 out = self.neck(backbone_out)
                 outs.append(out)
+                print('forward extract fin')
                 return outs
         else:
             out = self.neck(x[-1])
             return out
-
         return x
-
-        # if self.with_neck: # ?
-        #     if self.training:
-        #         outs = []
-        #         for cb_out in x:
-        #             out = self.neck(cb_out)
-        #             outs.append(out)
-        #         return outs
-        #     else:
-        #         out = self.neck(x[-1])
-        #         return out
-        # return x
 
     def forward_train(self,
                       img,
@@ -189,33 +152,45 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
             dict[str, Tensor]: A dictionary of loss components.
         """
         # Multi-scale training
+        img, gt_bboxes = self._preprocess(img, gt_bboxes)
+
         losses = dict()
         if not isinstance(self.archs, list): # not sandwich
             self.archs = [self.arch]
-        # if self.sandwich: # backbone结构一样时，节省时间，直接复用backbone feature
-        #     backbone_feat = self.extract_backbone_feat(img)
+
         for idx, arch in enumerate(self.archs):
             if self.search_backbone or self.search_neck:
                 self.set_arch(arch)
 
-            # if self.sandwich: # 这里省略，因为backbone会变
-            #     xs = self.extract_neck_feat(backbone_feat)
-            # else:
-            #     xs = self.extract_feat(img)
-
-            xs = self.extract_feat(img) # ?
+            xs = self.extract_feat(img)
 
             if len(self.archs) > 1 and self.inplace: # inplace distill
                 if idx == 0: # 最大的子网
                     teacher_feat = xs[-1]
+                    # teacher好像没有计算loss？
+                    # losses = super(YOLOX_Searchable_Sandwich).forward_train(img, img_metas, gt_bboxes,
+                    #                               gt_labels, gt_bboxes_ignore)
+                    # print("losses")
+                    # print(losses)
+                    # losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
+
                 else:
                     kd_feat_loss = 0
                     student_feat = xs[-1]
                     for i in range(len(student_feat)):
                         kd_feat_loss += self.kd_loss(student_feat[i], teacher_feat[i].detach(), i) * self.kd_weight
+                        print("kd_feat_loss")
+                        print(kd_feat_loss)
 
                     losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
 
+        # random resizing
+        if (self._progress_in_iter + 1) % self._random_size_interval == 0:
+            self._input_size = self._random_resize()
+        self._progress_in_iter += 1
+
+        print("loss")
+        print(losses)
 
         # img, gt_bboxes = self._preprocess(img, gt_bboxes)
         #

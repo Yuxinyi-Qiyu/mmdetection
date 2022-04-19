@@ -24,7 +24,7 @@ runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
               search_backbone=search_backbone,
               search_neck=search_neck,
               search_head=search_head,
-              sandwich = sandwich
+              sandwich = sandwich,
               )
 
 find_unused_parameters=True
@@ -46,6 +46,10 @@ model = dict(
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
+    inplace=inplace,
+    search_backbone=search_backbone,
+    search_neck=search_neck,
+    search_head=search_head,
     backbone=dict(
         type='CSPDarknet_Searchable',
         conv_cfg=dict(type='USConv2d'),
@@ -105,7 +109,7 @@ train_dataset = dict(
     type='MultiImageMixDataset',
     dataset=dict(
         type=dataset_type,
-        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
+        ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         # ann_file=[
         #         data_root + 'VOC2007/ImageSets/Main/trainval.txt',
@@ -145,14 +149,12 @@ data = dict(
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
-        # ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
+        ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
-        # ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
+        ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline))
 

@@ -117,18 +117,6 @@ class YOLOXPAFPN_Searchable(BaseModule):
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
-        # print("<<<<<<<<<<<<<<<<<<<<")
-        # print("self.reduce_layers")
-        # print(self.reduce_layers)
-        # print("self.top_down_blocks")
-        # print(self.top_down_blocks)
-        # print("self.downsamples")
-        # print(self.downsamples)
-        # print("self.bottom_up_blocks")
-        # print(self.bottom_up_blocks)
-        # print("self.out_convs")
-        # print(self.out_convs)
-
 
     def set_arch(self, arch, **kwargs):
         widen_factor = arch['widen_factor']
