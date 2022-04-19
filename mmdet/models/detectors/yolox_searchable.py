@@ -9,19 +9,6 @@ from mmcv.runner import get_dist_info
 from ..builder import DETECTORS
 from .single_stage import SingleStageDetector
 
-def dist2(tensor_a, tensor_b, attention_mask=None, channel_attention_mask=None):
-    if tensor_a.shape != tensor_b:
-        tensor_a = max_pooling_layer(tensor_a)
-        tensor_b = max_pooling_layer(tensor_b)
-    diff = (tensor_a - tensor_b) ** 2
-    if attention_mask is not None:
-        diff = diff * attention_mask
-    if channel_attention_mask is not None:
-        diff = diff * channel_attention_mask
-    diff = torch.sum(diff) ** 0.5
-    return diff
-
-
 @DETECTORS.register_module()
 class YOLOX_Searchable(SingleStageDetector):
     r"""Implementation of `YOLOX: Exceeding YOLO Series in 2021

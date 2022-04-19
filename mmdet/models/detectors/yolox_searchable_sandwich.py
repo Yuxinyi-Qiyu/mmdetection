@@ -110,22 +110,15 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
 
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck."""
-
-        print('before self.backbone')
         x = self.backbone(img)
         if not isinstance(x[0], (list, tuple)):
             x = [x]
-        print('backbone fin!')
-        if self.search_neck:
+        if self.with_neck: # True
             outs = []
             for backbone_out in x:
                 out = self.neck(backbone_out)
                 outs.append(out)
-                print('forward extract fin')
-                return outs
-        else:
-            out = self.neck(x[-1])
-            return out
+            return outs
         return x
 
     def forward_train(self,
@@ -162,28 +155,48 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
             if self.search_backbone or self.search_neck:
                 self.set_arch(arch)
 
-            xs = self.extract_feat(img)
+            x = self.extract_feat(img)
 
             if len(self.archs) > 1 and self.inplace: # inplace distill
                 if idx == 0: # 最大的子网
-                    teacher_feat = xs[-1]
-                    # teacher好像没有计算loss？
-                    # losses = super(YOLOX_Searchable_Sandwich).forward_train(img, img_metas, gt_bboxes,
-                    #                               gt_labels, gt_bboxes_ignore)
-                    # print("losses")
-                    # print(losses)
-                    # losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
-
+                    teacher_feat = x[-1]
                 else:
                     kd_feat_loss = 0
-                    student_feat = xs[-1]
+                    student_feat = x[-1] # 倒数第一个out，最大的out
                     for i in range(len(student_feat)):
                         kd_feat_loss += self.kd_loss(student_feat[i], teacher_feat[i].detach(), i) * self.kd_weight
-                        print("kd_feat_loss")
-                        print(kd_feat_loss)
+                        # print(student_feat[i], teacher_feat[i], i)
+                        # print("kd_feat_loss")
+                        # print(kd_feat_loss)
 
                     losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
 
+            print("neck_loss")
+            x = x[0]
+            neck_loss = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
+                                              gt_labels, gt_bboxes_ignore)
+            # print(neck_loss)
+
+            # losses.update({'neck_feat_loss_{}'.format(idx): neck_loss})
+            losses.update({'loss_cls_{}'.format(idx): neck_loss['loss_cls']})
+            losses.update({'loss_bbox_{}'.format(idx): neck_loss['loss_bbox']})
+            losses.update({'loss_obj_{}'.format(idx): neck_loss['loss_obj']})
+
+
+
+            # for i, x in enumerate(xs):
+            #     # head forward and loss
+            #     bbox_head_losses, p = self.bbox_head.forward_train(
+            #             x,
+            #             img_metas,
+            #             gt_bboxes,
+            #             gt_labels=None,
+            #             gt_bboxes_ignore=gt_bboxes_ignore,
+            #             proposal_cfg=None,
+            #     )
+            #     losses.update(bbox_head_losses)
+            #     print("bbox_head_losses")
+            #     print(bbox_head_losses)
         # random resizing
         if (self._progress_in_iter + 1) % self._random_size_interval == 0:
             self._input_size = self._random_resize()
@@ -191,6 +204,8 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
 
         print("loss")
         print(losses)
+
+        return losses
 
         # img, gt_bboxes = self._preprocess(img, gt_bboxes)
         #
@@ -201,9 +216,6 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
         # if (self._progress_in_iter + 1) % self._random_size_interval == 0:
         #     self._input_size = self._random_resize()
         # self._progress_in_iter += 1
-
-        return losses
-
     def _preprocess(self, img, gt_bboxes):
         scale_y = self._input_size[0] / self._default_input_size[0]
         scale_x = self._input_size[1] / self._default_input_size[1]
