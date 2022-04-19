@@ -4,27 +4,27 @@ _base_ = [
 ]
 checkpoint_config = dict(type='CheckpointHook_nolog', interval=1)
 
-widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
-deepen_factor_range = [0.33, 1.0]
+# widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+widen_factor_range = [0.125, 0.25, 0.375, 0.5]
+widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
+# deepen_factor_range = [0.33, 1.0]
+deepen_factor_range = [0.33]
+deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = True
 search_neck = True
 search_head = False
+# sandwich = False
+sandwich = True
+inplace = 'NonLocal' # 'L2Softmax'
 img_scale = (640, 640)
-panas_c_range = [64, 256]
-panas_d_range = [1, 5]
-head_d_range = [1, 3]
-cb_step = 2
-cb_type = 1
-init_c = panas_c_range[1] + 16
 
 runner = dict(type='EpochBasedRunnerSuper', max_epochs=300,
-              panas_c_range=panas_c_range,
               widen_factor_range=widen_factor_range,
               deepen_factor_range=deepen_factor_range,
               search_backbone=search_backbone,
               search_neck=search_neck,
-              search_head=search_head
+              search_head=search_head,
+              sandwich = sandwich
               )
 
 find_unused_parameters=True
@@ -36,14 +36,13 @@ optimizer = dict(
     weight_decay=5e-4,
     nesterov=True,
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-# optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
+
 optimizer_config = dict(grad_clip=None)
-
-
 
 # model settings
 model = dict(
-    type='YOLOX_Searchable',
+    # type='YOLOX_Searchable',
+    type='YOLOX_Searchable_Sandwich',
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
@@ -52,10 +51,7 @@ model = dict(
         conv_cfg=dict(type='USConv2d'),
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
-        # deepen_factor=0.33,
-        deepen_factor=[1.0, 1.0, 1.0, 1.0],
-        # widen_factor=0.5,
-        # widen_factor=1.0,
+        deepen_factor=deepen_factor,
         widen_factor=widen_factor),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
@@ -74,8 +70,6 @@ model = dict(
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
-# data_root = 'data/coco/'
-# dataset_type = 'CocoDataset'
 data_root = 'data/VOCdevkit/'
 dataset_type = 'VOCDataset'
 
@@ -111,11 +105,13 @@ train_dataset = dict(
     type='MultiImageMixDataset',
     dataset=dict(
         type=dataset_type,
-        ann_file=[
-                data_root + 'VOC2007/ImageSets/Main/trainval.txt',
-                data_root + 'VOC2012/ImageSets/Main/trainval.txt'
-            ],
-        img_prefix=[data_root + 'VOC2007/', data_root + 'VOC2012/'],
+        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
+        img_prefix=data_root + 'VOC2007/',
+        # ann_file=[
+        #         data_root + 'VOC2007/ImageSets/Main/trainval.txt',
+        #         data_root + 'VOC2012/ImageSets/Main/trainval.txt'
+        #     ],
+        # img_prefix=[data_root + 'VOC2007/', data_root + 'VOC2012/'],
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations', with_bbox=True)
@@ -149,12 +145,14 @@ data = dict(
     train=train_dataset,
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
+        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
+        # ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
+        ann_file=data_root + 'VOC2007/ImageSets/Main/aeroplane_test.txt',
+        # ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline))
 

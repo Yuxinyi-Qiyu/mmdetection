@@ -8,22 +8,17 @@ checkpoint_config = dict(type='CheckpointHook_nolog', interval=10)
 # panas_c_range = [16, 64]
 # widen_factor_range = [0, 1.0]
 widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
+# widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
+widen_factor = [0.25, 0.25, 0.25, 0.25, 0.25]
 deepen_factor_range = [0.33, 1.0]
+deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = True
 search_neck = True
 search_head = False
 img_scale = (640, 640)
-panas_c_range = [64, 256]
-panas_d_range = [1, 5]
-head_d_range = [1, 3]
-cb_step = 2
-cb_type = 1
-init_c = panas_c_range[1] + 16
 
 
 runner = dict(type='EpochBasedRunner_tfs', max_epochs=300,
-              panas_c_range=panas_c_range,
               widen_factor_range=widen_factor_range,
               deepen_factor_range=deepen_factor_range,
               search_backbone=search_backbone,
@@ -66,16 +61,17 @@ model = dict(
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
         # deepen_factor=0.33,
-        deepen_factor=[1.0, 0.33, 1.0, 1.0],
+        deepen_factor=deepen_factor,
         # widen_factor=0.5,
         # widen_factor=1.0,
-        widen_factor=[0.875, 0.375, 0.875, 0.375, 0.75]),
+        widen_factor=widen_factor),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
         # in_channels=[128, 256, 512],
-        in_channels=[224, 192, 768],
+        # in_channels=[96, 192, 384],
+        in_channels=[64, 128, 256],
         # out_channels=128,
         out_channels=256,
         num_csp_blocks=1),

@@ -42,6 +42,8 @@ from .yolo import YOLOV3
 from .yolof import YOLOF
 from .yolox import YOLOX
 from .yolox_searchable import YOLOX_Searchable
+from .yolox_searchable_sandwich import YOLOX_Searchable_Sandwich
+
 
 __all__ = [
     'ATSS', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
@@ -52,5 +54,5 @@ __all__ = [
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SCNet', 'SOLO',
     'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'YOLOX',
     'TwoStagePanopticSegmentor', 'PanopticFPN', 'QueryInst', 'LAD', 'TOOD',
-    'MaskFormer', 'YOLOX_Searchable'
+    'MaskFormer', 'YOLOX_Searchable', 'YOLOX_Searchable_Sandwich'
 ]

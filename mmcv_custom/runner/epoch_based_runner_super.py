@@ -25,40 +25,19 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
     This runner train models epoch by epoch.
     """
     def __init__(self,
-                 panas_type=0,
-                 panas_c_range=[128, 256],
-                 panas_d_range=[3, 12],
-                 head_d_range = [1, 3],
                  widen_factor_range=[0, 1],
                  deepen_factor_range=[0, 1],
-                 cb_type = 3,
-                 cb_step = 4,
-                 c_interval = 16,
-                 w_interval = 16, # @todo
-                 base_channel = 64,
                  search_backbone=True,
                  search_neck=True,
                  search_head=False,
                  sandwich=False,
                  **kwargs):
-        self.panas_type = panas_type
-        self.step = 0
-        self.panas_c_range = panas_c_range
-        self.panas_d_range = panas_d_range
-        self.head_d_range = head_d_range
         self.widen_factor_range = widen_factor_range,
         self.deepen_factor_range = deepen_factor_range,
-        self.cb_type = cb_type
-        self.cb_step = cb_step
-        self.c_interval = c_interval
-        self.base_channel = base_channel
-        self.w_interval = w_interval
-        self.sandwich = sandwich
-
         self.search_backbone = search_backbone
         self.search_neck = search_neck
         self.search_head =  search_head
-
+        self.sandwich = sandwich
 
         self.arch = None
 
@@ -87,34 +66,20 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         if self.search_backbone:
             widen_factor_range = self.widen_factor_range[0] # todo ??  ([0,1],)
             deepen_factor_range = self.deepen_factor_range[0] # todo??
-            # todo: arch['widen_factor'] = np.random.uniform(widen_factor_range[0], widen_factor_range[1]) * self.base_channel // self.w_interval * self.w_interval #[0,1]
             arch['widen_factor'] = []
             arch['deepen_factor'] = []
             for i in range(5):
                 arch['widen_factor'].append(widen_factor_range[np.random.randint(0, len(widen_factor_range))]) #todo [0,1]
-                # arch['widen_factor'].append(np.random.uniform(widen_factor_range[0]+0.001, widen_factor_range[1]+0.001)) #todo [0,1]
             for i in range(4):
                 arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
-            # print("arch['widen_factor']:"+str(arch['widen_factor']))
-            # print("arch['deepen_factor']:"+str(arch['deepen_factor']))
-            #todo: deepen是随机生成数组下标，要改
-        # if self.search_neck:
-        #     arch['panas_arch'] = [np.random.randint(self.panas_type) for i in range(self.panas_d_range[1])]
-        #     arch['panas_d'] = np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1)
-        #     arch['panas_d'] = self.panas_d_range[1]
-        #     arch['panas_c'] = np.random.randint(self.panas_c_range[0], self.panas_c_range[
-        #         1] + self.c_interval) // self.c_interval * self.c_interval # 随机取base-channel，并保证是16的倍数
 
-        # if self.search_head:
-        #     if self.head_d_range:
-        #         # arch['head_step'] = self.head_d_range[1]
-        #         arch['head_step'] = np.random.randint(self.head_d_range[0], self.head_d_range[1] + 1)
-        #         if max_arch:
-        #             arch['head_step'] = self.head_d_range[1]
-        #         if min_arch:
-        #             arch['head_step'] = self.head_d_range[0]
-        #     else:
-        #         arch['head_step'] = 1
+            # sandwich
+            if max_arch:
+                arch['widen_factor'] = [0.5, 0.5, 0.5, 0.5, 0.5]
+                arch['deepen_factor'] = [0.33, 0.33, 0.33, 0.33]
+            if min_arch:
+                arch['widen_factor'] = [0.125, 0.125, 0.125, 0.125, 0.125]
+                arch['deepen_factor'] = [0.33, 0.33, 0.33, 0.33]
 
         return arch
 
@@ -134,7 +99,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
             self.call_hook('before_train_iter')
             self.arch = self.get_cand_arch()
 
-            if self.sandwich: # false
+            if self.sandwich:
                 self.archs = []
                 self.archs.append(self.get_cand_arch(max_arch=True))
                 self.archs.append(self.get_cand_arch(min_arch=True))

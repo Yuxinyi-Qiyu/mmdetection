@@ -8,10 +8,11 @@ model = dict(
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.5),
+    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.25),
     neck=dict(
         type='YOLOXPAFPN',
-        in_channels=[128, 256, 512],
+        # in_channels=[96, 192, 384],
+        in_channels=[64, 128, 256],
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(

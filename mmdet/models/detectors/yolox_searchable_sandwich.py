@@ -9,6 +9,17 @@ from mmcv.runner import get_dist_info
 from ..builder import DETECTORS
 from .single_stage import SingleStageDetector
 
+def bn_calibration_init(m):
+    """ calculating post-statistics of batch normalization """
+    if getattr(m, 'track_running_stats', False):
+        # reset all values for post-statistics
+        m.reset_running_stats()
+        # set bn in training mode to update post-statistics
+        m.training = True
+        # if use cumulative moving average
+        if getattr(FLAGS, 'cumulative_bn_stats', False):
+            m.momentum = None
+
 def dist2(tensor_a, tensor_b, attention_mask=None, channel_attention_mask=None):
     if tensor_a.shape != tensor_b:
         tensor_a = max_pooling_layer(tensor_a)
@@ -21,9 +32,11 @@ def dist2(tensor_a, tensor_b, attention_mask=None, channel_attention_mask=None):
     diff = torch.sum(diff) ** 0.5
     return diff
 
+def max_pooling_layer(x):
+    return reduce(x, 'b c h w -> b 1 h w', 'max')
 
 @DETECTORS.register_module()
-class YOLOX_Searchable(SingleStageDetector):
+class YOLOX_Searchable_Sandwich(SingleStageDetector):
     r"""Implementation of `YOLOX: Exceeding YOLO Series in 2021
     <https://arxiv.org/abs/2107.08430>`_
 
@@ -65,14 +78,24 @@ class YOLOX_Searchable(SingleStageDetector):
                  size_multiplier=32,
                  random_size_range=(15, 25),
                  random_size_interval=10,
+                 init_cfg=None,
                  search_backbone=True,
                  search_neck=True,
                  search_head=False,
-                 init_cfg=None,
-                 inplace=False, # ?
+                 sandwich=False,
+                 inplace=False, # distill
+                 kd_weight=1e-8,
                  ):
-        super(YOLOX_Searchable, self).__init__(backbone, neck, bbox_head, train_cfg,
-                                    test_cfg, pretrained, init_cfg)
+        super(YOLOX_Searchable_Sandwich, self).__init__(
+            backbone,
+            neck,
+            bbox_head,
+            train_cfg,
+            test_cfg,
+            pretrained,
+            init_cfg,
+        )
+
         self.rank, self.world_size = get_dist_info()
         self._default_input_size = input_size
         self._input_size = input_size
@@ -83,9 +106,20 @@ class YOLOX_Searchable(SingleStageDetector):
         self.search_backbone = search_backbone
         self.search_neck = search_neck
         self.search_head = search_head
+        self.sandwich = sandwich
         self.inplace = inplace
         self.arch = None
         self.archs = None
+        # 不同蒸馏对应的loss计算方法
+        if self.inplace == 'L2':
+            self.kd_loss = DL2()
+        elif self.inplace == 'L2Softmax':
+            self.kd_loss = DL2(softmax=True)
+        elif self.inplace == 'DML':
+            self.kd_loss = DML()
+        elif self.inplace == 'NonLocal':
+            self.kd_loss = NonLocalBlockLoss(self.out_channels, 64)
+        # self.set_arch({'panas_arch': (3, 3, 1, 2, -1), 'panas_c': 112, 'panas_d': 4, 'cb_type': 0, 'cb_step': 2, 'head_step': 2})
 
     def set_archs(self, archs, **kwargs):
         self.archs = archs
@@ -97,6 +131,39 @@ class YOLOX_Searchable(SingleStageDetector):
         if self.search_neck:
             self.neck.set_arch(self.arch)
 
+    def extract_feat(self, img):
+        """Directly extract features from the backbone+neck."""
+
+        if self.search_backbone:
+            x = self.backbone(img, self.cb_step) #!!
+        else:
+            x = self.backbone(img)
+        if not isinstance(x[0], (list, tuple)):
+            x = [x]
+
+        if self.search_neck: # ?
+            outs = []
+            for backbone_out in x:
+                out = self.neck(backbone_out)
+                outs.append(out)
+                return outs
+        else:
+            out = self.neck(x[-1])
+            return out
+
+        return x
+
+        # if self.with_neck: # ?
+        #     if self.training:
+        #         outs = []
+        #         for cb_out in x:
+        #             out = self.neck(cb_out)
+        #             outs.append(out)
+        #         return outs
+        #     else:
+        #         out = self.neck(x[-1])
+        #         return out
+        # return x
 
     def forward_train(self,
                       img,
@@ -123,35 +190,42 @@ class YOLOX_Searchable(SingleStageDetector):
         """
         # Multi-scale training
         losses = dict()
-        '''
-        if isinstance(self.archs, list):
-            # todo
-            for idx, arch in enumerate(self.archs):
+        if not isinstance(self.archs, list): # not sandwich
+            self.archs = [self.arch]
+        # if self.sandwich: # backbone结构一样时，节省时间，直接复用backbone feature
+        #     backbone_feat = self.extract_backbone_feat(img)
+        for idx, arch in enumerate(self.archs):
+            if self.search_backbone or self.search_neck:
                 self.set_arch(arch)
-                xs = self.extract_feat(img) # ?
-                print(idx, xs[0][0].dtype, self.inplace)
-                if len(self.archs) > 1 and self.inplace: # inplace distill
-                    if idx == 0:
-                        teacher_feat = xs[-1]
-                    else:
-                        kd_feat_loss = 0
-                        student_feat = xs[-1]
-                        for i in range(len(student_feat)):
-                            kd_feat_loss += dist2(teacher_feat[i], student_feat[i])* 7e-5
-                        kd_feat_loss = kd_feat_loss.type_as(student_feat[0])
-                        losses.update({'kd_feat_loss_{}'.format(idx):kd_feat_loss})
 
-        '''
+            # if self.sandwich: # 这里省略，因为backbone会变
+            #     xs = self.extract_neck_feat(backbone_feat)
+            # else:
+            #     xs = self.extract_feat(img)
 
-        img, gt_bboxes = self._preprocess(img, gt_bboxes)
+            xs = self.extract_feat(img) # ?
 
-        losses = super(YOLOX_Searchable, self).forward_train(img, img_metas, gt_bboxes,
-                                                  gt_labels, gt_bboxes_ignore)
+            if len(self.archs) > 1 and self.inplace: # inplace distill
+                if idx == 0: # 最大的子网
+                    teacher_feat = xs[-1]
+                else:
+                    kd_feat_loss = 0
+                    student_feat = xs[-1]
+                    for i in range(len(student_feat)):
+                        kd_feat_loss += self.kd_loss(student_feat[i], teacher_feat[i].detach(), i) * self.kd_weight
 
-        # random resizing
-        if (self._progress_in_iter + 1) % self._random_size_interval == 0:
-            self._input_size = self._random_resize()
-        self._progress_in_iter += 1
+                    losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
+
+
+        # img, gt_bboxes = self._preprocess(img, gt_bboxes)
+        #
+        # losses = super(YOLOX_Searchable, self).forward_train(img, img_metas, gt_bboxes,
+        #                                           gt_labels, gt_bboxes_ignore)
+        #
+        # # random resizing
+        # if (self._progress_in_iter + 1) % self._random_size_interval == 0:
+        #     self._input_size = self._random_resize()
+        # self._progress_in_iter += 1
 
         return losses
 
