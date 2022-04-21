@@ -143,7 +143,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=2,
     workers_per_gpu=4,
     # samples_per_gpu=1,
     # workers_per_gpu=1,
@@ -203,6 +203,7 @@ evaluation = dict(
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
     # interval=interval,
+    # interval=300,
     interval=10,
     # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='mAP')

@@ -110,16 +110,13 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
 
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck."""
-        x = self.backbone(img)
-        if not isinstance(x[0], (list, tuple)):
-            x = [x]
-        if self.with_neck: # True
-            outs = []
-            for backbone_out in x:
-                out = self.neck(backbone_out)
-                outs.append(out)
-            return outs
-        return x
+        x = self.backbone(img) # len(x) 3
+        input_neck = []
+        for stage_out in x:
+            input_neck.append(stage_out)
+        x = self.neck(input_neck)
+        # x = self.neck([x[0],x[1],x[2]])
+        return x #tuple (tensor) len=3
 
     def forward_train(self,
                       img,
@@ -159,63 +156,29 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
 
             if len(self.archs) > 1 and self.inplace: # inplace distill
                 if idx == 0: # 最大的子网
-                    teacher_feat = x[-1]
+                    teacher_feat = x
                 else:
                     kd_feat_loss = 0
-                    student_feat = x[-1] # 倒数第一个out，最大的out
+                    student_feat = x
                     for i in range(len(student_feat)):
                         kd_feat_loss += self.kd_loss(student_feat[i], teacher_feat[i].detach(), i) * self.kd_weight
-                        # print(student_feat[i], teacher_feat[i], i)
-                        # print("kd_feat_loss")
-                        # print(kd_feat_loss)
 
                     losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
 
-            print("neck_loss")
-            x = x[0]
-            neck_loss = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
+            head_loss = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
                                               gt_labels, gt_bboxes_ignore)
-            # print(neck_loss)
 
-            # losses.update({'neck_feat_loss_{}'.format(idx): neck_loss})
-            losses.update({'loss_cls_{}'.format(idx): neck_loss['loss_cls']})
-            losses.update({'loss_bbox_{}'.format(idx): neck_loss['loss_bbox']})
-            losses.update({'loss_obj_{}'.format(idx): neck_loss['loss_obj']})
+            losses.update({'loss_cls_{}'.format(idx): head_loss['loss_cls']})
+            losses.update({'loss_bbox_{}'.format(idx): head_loss['loss_bbox']})
+            losses.update({'loss_obj_{}'.format(idx): head_loss['loss_obj']})
 
-
-
-            # for i, x in enumerate(xs):
-            #     # head forward and loss
-            #     bbox_head_losses, p = self.bbox_head.forward_train(
-            #             x,
-            #             img_metas,
-            #             gt_bboxes,
-            #             gt_labels=None,
-            #             gt_bboxes_ignore=gt_bboxes_ignore,
-            #             proposal_cfg=None,
-            #     )
-            #     losses.update(bbox_head_losses)
-            #     print("bbox_head_losses")
-            #     print(bbox_head_losses)
         # random resizing
         if (self._progress_in_iter + 1) % self._random_size_interval == 0:
             self._input_size = self._random_resize()
         self._progress_in_iter += 1
 
-        print("loss")
-        print(losses)
-
         return losses
 
-        # img, gt_bboxes = self._preprocess(img, gt_bboxes)
-        #
-        # losses = super(YOLOX_Searchable, self).forward_train(img, img_metas, gt_bboxes,
-        #                                           gt_labels, gt_bboxes_ignore)
-        #
-        # # random resizing
-        # if (self._progress_in_iter + 1) % self._random_size_interval == 0:
-        #     self._input_size = self._random_resize()
-        # self._progress_in_iter += 1
     def _preprocess(self, img, gt_bboxes):
         scale_y = self._input_size[0] / self._default_input_size[0]
         scale_x = self._input_size[1] / self._default_input_size[1]

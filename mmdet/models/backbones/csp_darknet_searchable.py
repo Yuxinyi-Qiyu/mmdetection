@@ -300,7 +300,7 @@ class CSPDarknet_Searchable(BaseModule):
                     m.eval()
 
     def forward(self, x):
-        print('train backbone')
+        # print('train backbone')
         outs = []
         arch_setting = self.arch_settings['P5']
         stage = 0
