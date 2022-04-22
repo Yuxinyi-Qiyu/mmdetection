@@ -30,7 +30,7 @@ model = dict(
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
         in_channels=[64, 128, 256],
-        out_channels=256,
+        out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
         type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128), # feat_channels 是啥

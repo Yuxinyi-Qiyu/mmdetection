@@ -11,7 +11,6 @@ model = dict(
     backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.25),
     neck=dict(
         type='YOLOXPAFPN',
-        # in_channels=[96, 192, 384],
         in_channels=[64, 128, 256],
         out_channels=128,
         num_csp_blocks=1),
@@ -105,6 +104,17 @@ data = dict(
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline))
 
+# optimizer
+# default 8 gpu
+optimizer = dict(
+    type='SGD',
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=5e-4,
+    nesterov=True,
+    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
+optimizer_config = dict(grad_clip=None)
+
 max_epochs = 300
 num_last_epochs = 15
 resume_from = None
@@ -141,7 +151,7 @@ custom_hooks = [
         priority=49)
 ]
 
-
+checkpoint_config = dict(interval=interval)
 
 evaluation = dict(
     save_best='auto',
