@@ -83,43 +83,6 @@ class EpochBasedRunner_tfs(EpochBasedRunner):
             self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
         self.outputs = outputs
 
-    def get_cand_arch(self, max_arch=False, min_arch=False):
-        arch = {}
-        if self.search_backbone:
-            widen_factor_range = self.widen_factor_range[0]  # todo ??  ([0,1],)
-            deepen_factor_range = self.deepen_factor_range[0]  # todo??
-            # todo: arch['widen_factor'] = np.random.uniform(widen_factor_range[0], widen_factor_range[1]) * self.base_channel // self.w_interval * self.w_interval #[0,1]
-            arch['widen_factor'] = []
-            arch['deepen_factor'] = []
-            for i in range(5):
-                arch['widen_factor'].append(
-                    widen_factor_range[np.random.randint(0, len(widen_factor_range))])  # todo [0,1]
-                # arch['widen_factor'].append(np.random.uniform(widen_factor_range[0]+0.001, widen_factor_range[1]+0.001)) #todo [0,1]
-            for i in range(4):
-                arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
-            # print("arch['widen_factor']:"+str(arch['widen_factor']))
-            # print("arch['deepen_factor']:"+str(arch['deepen_factor']))
-            # todo: deepen是随机生成数组下标，要改
-        # if self.search_neck:
-        #     arch['panas_arch'] = [np.random.randint(self.panas_type) for i in range(self.panas_d_range[1])]
-        #     arch['panas_d'] = np.random.randint(self.panas_d_range[0], self.panas_d_range[1] + 1)
-        #     arch['panas_d'] = self.panas_d_range[1]
-        #     arch['panas_c'] = np.random.randint(self.panas_c_range[0], self.panas_c_range[
-        #         1] + self.c_interval) // self.c_interval * self.c_interval # 随机取base-channel，并保证是16的倍数
-
-        # if self.search_head:
-        #     if self.head_d_range:
-        #         # arch['head_step'] = self.head_d_range[1]
-        #         arch['head_step'] = np.random.randint(self.head_d_range[0], self.head_d_range[1] + 1)
-        #         if max_arch:
-        #             arch['head_step'] = self.head_d_range[1]
-        #         if min_arch:
-        #             arch['head_step'] = self.head_d_range[0]
-        #     else:
-        #         arch['head_step'] = 1
-
-        return arch
-
     def set_grad_none(self, **kwargs):
         self.model.module.set_grad_none(**kwargs)
 
@@ -130,23 +93,9 @@ class EpochBasedRunner_tfs(EpochBasedRunner):
         self._max_iters = self._max_epochs * len(self.data_loader)
         self.call_hook('before_train_epoch')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
-
         for i, data_batch in enumerate(self.data_loader):
             self._inner_iter = i
             self.call_hook('before_train_iter')
-            self.arch = self.get_cand_arch()
-
-            if self.sandwich:  # false
-                self.archs = []
-                self.archs.append(self.get_cand_arch(max_arch=True))
-                self.archs.append(self.get_cand_arch(min_arch=True))
-                self.archs.append(self.get_cand_arch())
-                self.archs.append(self.arch)
-                self.model.module.set_archs(self.archs, **kwargs)
-            # else:
-            #     self.model.module.set_arch(self.arch, **kwargs)
-
-            # self.logger.info(f'arch: {self.arch}')
             self.run_iter(data_batch, train_mode=True, **kwargs)
             self.call_hook('after_train_iter')
             self._iter += 1

@@ -2,52 +2,16 @@ _base_ = [
     '../_base_/schedules/schedule_1x.py',
     '../_base_/default_runtime.py'
 ]
-# checkpoint_config = dict(interval=interval)
-checkpoint_config = dict(type='CheckpointHook_nolog', interval=10)
 
-# panas_c_range = [16, 64]
-# widen_factor_range = [0, 1.0]
+img_scale = (640, 640)
 widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-# widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
 widen_factor = [0.25, 0.25, 0.25, 0.25, 0.25]
 deepen_factor_range = [0.33, 1.0]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = True
 search_neck = True
 search_head = False
-img_scale = (640, 640)
-
-
-runner = dict(type='EpochBasedRunner_tfs', max_epochs=300,
-              widen_factor_range=widen_factor_range,
-              deepen_factor_range=deepen_factor_range,
-              search_backbone=search_backbone,
-              search_neck=search_neck,
-              search_head=search_head
-              )
-# runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-# log_config = dict(
-#     interval=50,
-#     hooks=[
-#         dict(type='TextLoggerHook'),
-#         # dict(type='TensorboardLoggerHook')
-#     ])
 find_unused_parameters=True
-
-
-
-
-optimizer = dict(
-    type='SGD',
-    lr=0.01,
-    momentum=0.9,
-    weight_decay=5e-4,
-    nesterov=True,
-    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-# optimizer_config = dict(type='OptimizerHookSuper', _delete_=True, grad_clip=dict(max_norm=35, norm_type=2)) # 是啥
-optimizer_config = dict(grad_clip=None)
-
-
 
 # model settings
 model = dict(
@@ -58,25 +22,18 @@ model = dict(
     backbone=dict(
         type='CSPDarknet_Searchable',
         conv_cfg=dict(type='USConv2d'),
-        # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
-        norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
-        # deepen_factor=0.33,
+        norm_cfg=dict(type='USBN2d'),
         deepen_factor=deepen_factor,
-        # widen_factor=0.5,
-        # widen_factor=1.0,
         widen_factor=widen_factor),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
-        # in_channels=[128, 256, 512],
-        # in_channels=[96, 192, 384],
         in_channels=[64, 128, 256],
-        # out_channels=128,
         out_channels=256,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256), # feat_channels 是啥
+        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128), # feat_channels 是啥
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -165,12 +122,21 @@ data = dict(
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline))
 
-
+# optimizer
+# default 8 gpu
+optimizer = dict(
+    type='SGD',
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=5e-4,
+    nesterov=True,
+    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
+optimizer_config = dict(grad_clip=None)
 
 max_epochs = 300
 num_last_epochs = 15
 resume_from = None
-interval = 10
+interval = 50
 
 # learning policy
 lr_config = dict(
@@ -184,7 +150,13 @@ lr_config = dict(
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05)
 
-
+runner = dict(type='EpochBasedRunner_tfs', max_epochs=max_epochs,
+              widen_factor_range=widen_factor_range,
+              deepen_factor_range=deepen_factor_range,
+              search_backbone=search_backbone,
+              search_neck=search_neck,
+              search_head=search_head
+              )
 
 custom_hooks = [
     dict(
@@ -202,16 +174,15 @@ custom_hooks = [
         momentum=0.0001,
         priority=49)
 ]
-
+checkpoint_config = dict(interval=interval)
 evaluation = dict(
     save_best='auto',
     # The evaluation interval is 'interval' when running epoch is
     # less than ‘max_epochs - num_last_epochs’.
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
-    # interval=interval,
-    interval=10,
-    # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
+    interval=interval,
+    dynamic_intervals=[(max_epochs - num_last_epochs, 5)],
     metric='mAP')
 
 log_config = dict(interval=50)
