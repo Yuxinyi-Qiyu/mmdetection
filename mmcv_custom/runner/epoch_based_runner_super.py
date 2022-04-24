@@ -96,17 +96,19 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         for i, data_batch in enumerate(self.data_loader):
             self._inner_iter = i
             self.call_hook('before_train_iter')
-            self.arch = self.get_cand_arch()
 
-            if self.sandwich:
-                self.archs = []
-                self.archs.append(self.get_cand_arch(max_arch=True))
-                self.archs.append(self.get_cand_arch(min_arch=True))
-                self.archs.append(self.get_cand_arch())
-                self.archs.append(self.arch)
-                self.model.module.set_archs(self.archs, **kwargs)
-            else:
-                self.model.module.set_arch(self.arch, **kwargs)
+            if self.search_backbone or self.search_neck or self.search_head:
+                self.arch = self.get_cand_arch()
+
+                if self.sandwich:
+                    self.archs = []
+                    self.archs.append(self.get_cand_arch(max_arch=True))
+                    self.archs.append(self.get_cand_arch(min_arch=True))
+                    self.archs.append(self.get_cand_arch())
+                    self.archs.append(self.arch)
+                    self.model.module.set_archs(self.archs, **kwargs)
+                else:
+                    self.model.module.set_arch(self.arch, **kwargs)
 
             # self.logger.info(f'arch: {self.arch}')
             self.run_iter(data_batch, train_mode=True, **kwargs)

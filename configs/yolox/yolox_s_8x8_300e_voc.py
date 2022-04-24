@@ -151,7 +151,10 @@ custom_hooks = [
         priority=49)
 ]
 
+<<<<<<< Updated upstream
 checkpoint_config = dict(interval=interval)
+=======
+>>>>>>> Stashed changes
 
 evaluation = dict(
     save_best='auto',
@@ -161,7 +164,7 @@ evaluation = dict(
     # or equal to ‘max_epochs - num_last_epochs’.
     # interval=interval,
     interval=10,
-    # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
+    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='mAP')
 
 log_config = dict(interval=50)

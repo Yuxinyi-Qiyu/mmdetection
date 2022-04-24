@@ -252,20 +252,21 @@ class FA_DCNv2_FP(nn.Conv2d):
 
 @NORM_LAYERS.register_module('USBN2d')
 class USBatchNorm2d(nn.BatchNorm2d):
+    # todo? super() 为什么conv cfg无法传进来
     def __init__(self,
                  num_features,
-                 eps=1e-5,
-                 momentum=0.1,
+                 # eps=1e-5,
+                 # momentum=0.1,
+                 eps=0.001,
+                 momentum=0.03,
                  affine=True,
                  group=None,
                  stats_mode='default',
                  fea_range=[64, 384]):
         super(USBatchNorm2d, self).__init__(
-            num_features=num_features, affine=True)
-        # self.num_features_max = num_features
+            num_features=num_features, affine=True, eps=0.001, momentum=0.03)
 
         # self.bn = nn.BatchNorm2d(self.num_features_max, affine=False)
-
         self.training = True
 
     def forward(self, input):
@@ -275,6 +276,7 @@ class USBatchNorm2d(nn.BatchNorm2d):
         # print(input.size())
         # print("self.num_features")
         # print(self.num_features)
+
         y = nn.functional.batch_norm(
             input,
             self.running_mean[:self.num_features],

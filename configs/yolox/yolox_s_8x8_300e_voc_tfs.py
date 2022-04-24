@@ -8,32 +8,32 @@ widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
 widen_factor = [0.25, 0.25, 0.25, 0.25, 0.25]
 deepen_factor_range = [0.33, 1.0]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
-search_backbone = True
-search_neck = True
+search_backbone = False
+search_neck = False
 search_head = False
 find_unused_parameters=True
 
 # model settings
 model = dict(
-    type='YOLOX_Searchable',
+    type='YOLOX_Searchable', # 1
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    backbone=dict(
+    backbone=dict( # 2
         type='CSPDarknet_Searchable',
         conv_cfg=dict(type='USConv2d'),
-        norm_cfg=dict(type='USBN2d'),
+        norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
         deepen_factor=deepen_factor,
         widen_factor=widen_factor),
-    neck=dict(
+    neck=dict( # 3
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
-        norm_cfg=dict(type='USBN2d'),
+        norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
         in_channels=[64, 128, 256],
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128), # feat_channels 是啥
+        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -136,7 +136,7 @@ optimizer_config = dict(grad_clip=None)
 max_epochs = 300
 num_last_epochs = 15
 resume_from = None
-interval = 50
+interval = 10
 
 # learning policy
 lr_config = dict(
@@ -150,13 +150,13 @@ lr_config = dict(
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05)
 
-runner = dict(type='EpochBasedRunner_tfs', max_epochs=max_epochs,
+runner = dict(type='EpochBasedRunnerSuper', max_epochs=max_epochs,
               widen_factor_range=widen_factor_range,
               deepen_factor_range=deepen_factor_range,
               search_backbone=search_backbone,
               search_neck=search_neck,
               search_head=search_head
-              )
+              ) # 4
 
 custom_hooks = [
     dict(
@@ -174,6 +174,7 @@ custom_hooks = [
         momentum=0.0001,
         priority=49)
 ]
+
 checkpoint_config = dict(interval=interval)
 evaluation = dict(
     save_best='auto',
@@ -182,7 +183,7 @@ evaluation = dict(
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
     interval=interval,
-    dynamic_intervals=[(max_epochs - num_last_epochs, 5)],
+    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='mAP')
 
 log_config = dict(interval=50)

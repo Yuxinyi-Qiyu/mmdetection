@@ -258,6 +258,12 @@ class CSPDarknet(BaseModule):
             self.add_module(f'stage{i + 1}', nn.Sequential(*stage))
             self.layers.append(f'stage{i + 1}')
 
+            print('model')
+            for i, layer_name in enumerate(self.layers):
+                layer = getattr(self, layer_name)
+                print(layer_name)
+                print(layer)
+
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
             for i in range(self.frozen_stages + 1):
