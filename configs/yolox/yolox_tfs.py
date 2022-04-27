@@ -1,72 +1,36 @@
 _base_ = [
     '../_base_/schedules/schedule_1x.py',
-    '../_base_/default_runtime.py',
+    '../_base_/default_runtime.py'
 ]
-checkpoint_config = dict(interval=50)
-# widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-widen_factor_range = [0.125, 0.25, 0.375, 0.5]
-widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
-# deepen_factor_range = [0.33, 1.0]
-deepen_factor_range = [0.33]
-deepen_factor = [0.33, 0.33, 0.33, 0.33]
-search_backbone = True
-search_neck = True
-search_head = False
-# sandwich = False
-sandwich = True
-inplace = 'NonLocal' # 'L2Softmax'
+
 img_scale = (640, 640)
-
-runner = dict(type='EpochBasedRunnerSuper', max_epochs=1,
-              widen_factor_range=widen_factor_range,
-              deepen_factor_range=deepen_factor_range,
-              search_backbone=search_backbone,
-              search_neck=search_neck,
-              search_head=search_head,
-              sandwich = sandwich,
-              )
-
-find_unused_parameters=True
-
-optimizer = dict(
-    type='SGD',
-    lr=0.01,
-    momentum=0.9,
-    weight_decay=5e-4,
-    nesterov=True,
-    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-
-optimizer_config = dict(grad_clip=None)
+widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5]
+deepen_factor_range = [0.33, 1.0]
+deepen_factor = [0.33, 0.33, 0.33, 0.33]
+search_backbone = False
+search_neck = False
+search_head = False
+# find_unused_parameters=True
 
 # model settings
 model = dict(
-    # type='YOLOX_Searchable',
-    type='YOLOX_Searchable_Sandwich',
+    type='YOLOX', # 1
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    inplace=inplace,
-    search_backbone=search_backbone,
-    search_neck=search_neck,
-    search_head=search_head,
-    backbone=dict(
-        type='CSPDarknet_Searchable',
-        conv_cfg=dict(type='USConv2d'),
-        # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
-        norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
+    backbone=dict( # 2
+        type='CSPDarknet_tfs',
         deepen_factor=deepen_factor,
         widen_factor=widen_factor),
-    neck=dict(
-        type='YOLOXPAFPN_Searchable',
-        conv_cfg=dict(type='USConv2d'),
-        norm_cfg=dict(type='USBN2d'),
-        # in_channels=[128, 256, 512],
-        in_channels=[256, 512, 1024],
-        # out_channels=128,
-        out_channels=256,
+    neck=dict( # 3
+        type='YOLOXPAFPN',
+        # in_channels=[64, 128, 256],
+        in_channels=[32, 64, 128],
+        out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256), # feat_channels 是啥
+        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -144,14 +108,6 @@ data = dict(
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
-    train_val=dict(
-        type=dataset_type,
-        ann_file=[
-                data_root + 'VOC2007/ImageSets/Main/trainval.txt',
-                data_root + 'VOC2012/ImageSets/Main/trainval.txt'
-            ],
-        img_prefix=[data_root + 'VOC2007/', data_root + 'VOC2012/'],
-        pipeline=test_pipeline),
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
@@ -162,6 +118,17 @@ data = dict(
         ann_file=data_root + 'VOC2007/ImageSets/Main/test.txt',
         img_prefix=data_root + 'VOC2007/',
         pipeline=test_pipeline))
+
+# optimizer
+# default 8 gpu
+optimizer = dict(
+    type='SGD',
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=5e-4,
+    nesterov=True,
+    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
+optimizer_config = dict(grad_clip=None)
 
 max_epochs = 300
 num_last_epochs = 15
@@ -180,6 +147,8 @@ lr_config = dict(
     num_last_epochs=num_last_epochs,
     min_lr_ratio=0.05)
 
+runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
+
 custom_hooks = [
     dict(
         type='YOLOXModeSwitchHook',
@@ -197,7 +166,7 @@ custom_hooks = [
         priority=49)
 ]
 
-
+checkpoint_config = dict(interval=interval) # 5
 
 evaluation = dict(
     save_best='auto',
@@ -205,10 +174,8 @@ evaluation = dict(
     # less than ‘max_epochs - num_last_epochs’.
     # The evaluation interval is 1 when running epoch is greater than
     # or equal to ‘max_epochs - num_last_epochs’.
-    # interval=interval,
-    # interval=300,
-    interval=10,
-    # dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
+    interval=interval,
+    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
     metric='mAP')
 
 log_config = dict(interval=50)

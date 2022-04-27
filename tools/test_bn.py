@@ -5,6 +5,9 @@ import os.path as osp
 import time
 import warnings
 import numpy as np
+import pickle
+import shutil
+import tempfile
 
 import mmcv
 import torch
@@ -14,14 +17,16 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
                          wrap_fp16_model)
 
-from mmdet.apis import multi_gpu_test, single_gpu_test
+from mmdet.apis import single_gpu_test
+# from mmdet.apis import multi_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
 from mmdet.models import build_detector
 from mmdet.utils import setup_multi_processes
 import logging
 import torch.distributed as dist
-
+from mmcv.image import tensor2imgs
+from mmdet.core import encode_mask_results
 
 
 def parse_args():
@@ -119,6 +124,108 @@ def parse_args():
         warnings.warn('--options is deprecated in favor of --eval-options')
         args.eval_options = args.options
     return args
+
+def collect_results_cpu(result_part, size, tmpdir=None):
+    rank, world_size = get_dist_info()
+    # create a tmp dir if it is not specified
+    if tmpdir is None:
+        MAX_LEN = 512
+        # 32 is whitespace
+        dir_tensor = torch.full((MAX_LEN, ),
+                                32,
+                                dtype=torch.uint8,
+                                device='cuda')
+        if rank == 0:
+            mmcv.mkdir_or_exist('.dist_test')
+            tmpdir = tempfile.mkdtemp(dir='.dist_test')
+            tmpdir = torch.tensor(
+                bytearray(tmpdir.encode()), dtype=torch.uint8, device='cuda')
+            dir_tensor[:len(tmpdir)] = tmpdir
+        dist.broadcast(dir_tensor, 0)
+        tmpdir = dir_tensor.cpu().numpy().tobytes().decode().rstrip()
+    else:
+        mmcv.mkdir_or_exist(tmpdir)
+    # dump the part result to the dir
+    mmcv.dump(result_part, osp.join(tmpdir, f'part_{rank}.pkl'))
+    dist.barrier()
+    # collect all parts
+    if rank != 0:
+        return None
+    else:
+        # load results of all parts from tmp dir
+        part_list = []
+        for i in range(world_size):
+            part_file = osp.join(tmpdir, f'part_{i}.pkl')
+            part_list.append(mmcv.load(part_file))
+        # sort the results
+        ordered_results = []
+        for res in zip(*part_list):
+            ordered_results.extend(list(res))
+        # the dataloader may pad some samples
+        ordered_results = ordered_results[:size]
+        # remove tmp dir
+        shutil.rmtree(tmpdir)
+        return ordered_results
+
+def collect_results_gpu(result_part, size):
+    rank, world_size = get_dist_info()
+    # dump result part to tensor with pickle
+    part_tensor = torch.tensor(
+        bytearray(pickle.dumps(result_part)), dtype=torch.uint8, device='cuda')
+    # gather all result part tensor shape
+    shape_tensor = torch.tensor(part_tensor.shape, device='cuda')
+    shape_list = [shape_tensor.clone() for _ in range(world_size)]
+    dist.all_gather(shape_list, shape_tensor)
+    # padding result part tensor to max length
+    shape_max = torch.tensor(shape_list).max()
+    part_send = torch.zeros(shape_max, dtype=torch.uint8, device='cuda')
+    part_send[:shape_tensor[0]] = part_tensor
+    part_recv_list = [
+        part_tensor.new_zeros(shape_max) for _ in range(world_size)
+    ]
+    # gather all result part
+    dist.all_gather(part_recv_list, part_send)
+
+    if rank == 0:
+        part_list = []
+        for recv, shape in zip(part_recv_list, shape_list):
+            part_list.append(
+                pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
+        # sort the results
+        ordered_results = []
+        for res in zip(*part_list):
+            ordered_results.extend(list(res))
+        # the dataloader may pad some samples
+        ordered_results = ordered_results[:size]
+        return ordered_results
+
+def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
+    results = []
+    dataset = data_loader.dataset
+    rank, world_size = get_dist_info()
+    if rank == 0:
+        prog_bar = mmcv.ProgressBar(len(dataset))
+    time.sleep(2)  # This line can prevent deadlock problem in some cases.
+    for i, data in enumerate(data_loader):
+        with torch.no_grad():
+            result = model(return_loss=False, rescale=True, **data)
+            # encode mask results
+            if isinstance(result[0], tuple):
+                result = [(bbox_results, encode_mask_results(mask_results))
+                          for bbox_results, mask_results in result]
+        results.extend(result)
+
+        if rank == 0:
+            batch_size = len(result)
+            for _ in range(batch_size * world_size):
+                prog_bar.update()
+
+    # collect results from all ranks
+    if gpu_collect:
+        results = collect_results_gpu(results, len(dataset))
+    else:
+        results = collect_results_cpu(results, len(dataset), tmpdir)
+    return results
 
 def get_broadcast_cand(arch, rank):
     # print("func get_broadcast_cand")
@@ -274,9 +381,17 @@ def main():
         json_file = osp.join(args.work_dir, f'eval_{timestamp}.json')
 
     # build the dataloader
-    dataset = build_dataset(cfg.data.test)
-    data_loader = build_dataloader(
-        dataset,
+    dataset_train = build_dataset(cfg.data.train_val)
+    data_loader_train = build_dataloader(
+        dataset_train,
+        samples_per_gpu=samples_per_gpu,
+        workers_per_gpu=cfg.data.workers_per_gpu,
+        dist=distributed,
+        shuffle=False)
+
+    dataset_eval = build_dataset(cfg.data.test)
+    data_loader_eval = build_dataloader(
+        dataset_eval,
         samples_per_gpu=samples_per_gpu,
         workers_per_gpu=cfg.data.workers_per_gpu,
         dist=distributed,
@@ -296,84 +411,95 @@ def main():
     if 'CLASSES' in checkpoint.get('meta', {}):
         model.CLASSES = checkpoint['meta']['CLASSES']
     else:
-        model.CLASSES = dataset.CLASSES
+        model.CLASSES = dataset_train.CLASSES
+    arch = {'widen_factor': tuple([0.125, 0.125 ,0.125, 0.125, 0.125]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
+    # arch = {'widen_factor': tuple([0.25, 0.25 ,0.25, 0.25, 0.25]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
+    # arch = {'widen_factor': tuple([0.375, 0.375 ,0.375, 0.375, 0.375]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
+    # arch = {'widen_factor': tuple([0.5, 0.5, 0.5, 0.5, 0.5]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
+    arch = get_broadcast_cand(arch, rank)
+    model.set_arch(arch)
+    print("set_arch fin! "+str(rank))
 
+    model.train()
+    if not distributed:
+        model_P = MMDataParallel(model, device_ids=cfg.gpu_ids)
+        outputs = single_gpu_test(model_P, data_loader_train, args.show, args.show_dir,
+                                  args.show_score_thr)
+    else:
+        model_P = MMDistributedDataParallel(
+            model.cuda(),
+            device_ids=[torch.cuda.current_device()],
+            broadcast_buffers=False)
 
-    for k in range(32):
-        arch = {}
-        rank, world_size = get_dist_info()
-        print("rank=" + str(rank))
-        # arch = get_random_arch()
-        # arch = form_arch(k
-        # arch = {'widen_factor': tuple([0.125, 0.125 ,0.125, 0.125, 0.125]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
-        # arch = {'widen_factor': tuple([0.25, 0.25 ,0.25, 0.25, 0.25]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
-        # arch = {'widen_factor': tuple([0.375, 0.375 ,0.375, 0.375, 0.375]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
-        arch = {'widen_factor': tuple([0.5, 0.5 ,0.5, 0.5, 0.5]), 'deepen_factor': tuple([0.33, 0.33, 0.33, 0.33])}
+        outputs = multi_gpu_test(model_P, data_loader_train, args.tmpdir,
+                                 args.gpu_collect)
 
-        print(arch)
-        arch = get_broadcast_cand(arch, rank)
+    rank, _ = get_dist_info()
+    if rank == 0:
+        if args.out:
+            print(f'\nwriting results to {args.out}')
+            mmcv.dump(outputs, args.out)
+        kwargs = {} if args.eval_options is None else args.eval_options
+        if args.format_only:
+            dataset_train.format_results(outputs, **kwargs)
+        if args.eval:
+            print("args.eval")
+            eval_kwargs = cfg.get('evaluation', {}).copy()
+            # hard-code way to remove EvalHook args
+            for key in [
+                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
+                    'rule', 'dynamic_intervals'
+            ]:
+                eval_kwargs.pop(key, None)
+            eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            metric = dataset_train.evaluate(outputs, **eval_kwargs)
+            print(metric)
 
-        # if rank == 0:
-        #     print("rank="+str(rank))
-        #     arch = get_random_arch()
-        #     print("rank=0")
-        #     print(arch)
-        #     logging.info("cand:" + str(arch))
-        #     dist.send(arch = arch, dst = 1)
-            # arch = get_broadcast_cand(arch, rank)
-        # else:
-        #     print("rank!=0")
-        #     dist.recv(arch = arch, dst = 0)
-            # while True:
-            #     arch = get_broadcast_cand(arch, rank)
-            #     if arch != {}:
-            #         break
+            metric_dict = dict(config=args.config, metric=metric)
+            if args.work_dir is not None and rank == 0:
+                mmcv.dump(metric_dict, json_file)
 
-        model.set_arch(arch)
-        # print(arch)
-        print("set_arch fin! "+str(rank))
+    model.eval()
+    if not distributed:
+        model_P = MMDataParallel(model, device_ids=cfg.gpu_ids)
+        outputs = single_gpu_test(model_P, data_loader_eval, args.show, args.show_dir,
+                                  args.show_score_thr)
+    else:
+        model_P = MMDistributedDataParallel(
+            model.cuda(),
+            device_ids=[torch.cuda.current_device()],
+            broadcast_buffers=False)
 
+        outputs = multi_gpu_test(model_P, data_loader_eval, args.tmpdir,
+                                 args.gpu_collect)
 
-        if not distributed:
-            model_P = MMDataParallel(model, device_ids=cfg.gpu_ids)
-            outputs = single_gpu_test(model_P, data_loader, args.show, args.show_dir,
-                                      args.show_score_thr)
-        else:
-            model_P = MMDistributedDataParallel(
-                model.cuda(),
-                device_ids=[torch.cuda.current_device()],
-                broadcast_buffers=False)
+    rank, _ = get_dist_info()
+    if rank == 0:
+        if args.out:
+            print(f'\nwriting results to {args.out}')
+            mmcv.dump(outputs, args.out)
+        kwargs = {} if args.eval_options is None else args.eval_options
+        if args.format_only:
+            dataset_eval.format_results(outputs, **kwargs)
+        if args.eval:
+            print("args.eval")
+            eval_kwargs = cfg.get('evaluation', {}).copy()
+            # hard-code way to remove EvalHook args
+            for key in [
+                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
+                    'rule', 'dynamic_intervals'
+            ]:
+                eval_kwargs.pop(key, None)
+            eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            metric = dataset_eval.evaluate(outputs, **eval_kwargs)
+            print(metric)
 
-            outputs = multi_gpu_test(model_P, data_loader, args.tmpdir,
-                                     args.gpu_collect)
+            metric_dict = dict(config=args.config, metric=metric)
+            if args.work_dir is not None and rank == 0:
+                mmcv.dump(metric_dict, json_file)
 
-        rank, _ = get_dist_info()
-        if rank == 0:
-            if args.out:
-                print(f'\nwriting results to {args.out}')
-                mmcv.dump(outputs, args.out)
-            kwargs = {} if args.eval_options is None else args.eval_options
-            if args.format_only:
-                dataset.format_results(outputs, **kwargs)
-            if args.eval:
-                print("args.eval")
-                print("k="+str(k))
-                eval_kwargs = cfg.get('evaluation', {}).copy()
-                # hard-code way to remove EvalHook args
-                for key in [
-                        'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
-                        'rule', 'dynamic_intervals'
-                ]:
-                    eval_kwargs.pop(key, None)
-                eval_kwargs.update(dict(metric=args.eval, **kwargs))
-                metric = dataset.evaluate(outputs, **eval_kwargs)
-                print(metric)
-
-                metric_dict = dict(config=args.config, metric=metric)
-                if args.work_dir is not None and rank == 0:
-                    mmcv.dump(metric_dict, json_file)
-                logging.info("cand:" + str(arch))
-                logging.info("metric_dict:" + str(metric_dict))
+            logging.info("cand:" + str(arch))
+            logging.info("metric_dict:" + str(metric_dict))
 
 
 

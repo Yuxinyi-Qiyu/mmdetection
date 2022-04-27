@@ -121,7 +121,7 @@ class SPPBottleneck(BaseModule):
 
 
 @BACKBONES.register_module()
-class CSPDarknet(BaseModule):
+class CSPDarknet_tfs(BaseModule):
     """CSP-Darknet backbone used in YOLOv5 and YOLOX.
 
     Args:
@@ -176,8 +176,8 @@ class CSPDarknet(BaseModule):
 
     def __init__(self,
                  arch='P5',
-                 deepen_factor=1.0,
-                 widen_factor=1.0,
+                 deepen_factor=[1.0, 1.0, 1.0, 1.0],
+                 widen_factor=[1.0, 1.0, 1.0, 1.0, 1.0],
                  out_indices=(2, 3, 4),
                  frozen_stages=-1,
                  use_depthwise=False,
@@ -209,11 +209,13 @@ class CSPDarknet(BaseModule):
         self.frozen_stages = frozen_stages
         self.use_depthwise = use_depthwise
         self.norm_eval = norm_eval
+        self.widen_factor = widen_factor
+        self.deepen_factor = deepen_factor  # todo
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
 
         self.stem = Focus(
             3,
-            int(arch_setting[0][0] * widen_factor),
+            int(arch_setting[0][0] * widen_factor[0]),
             kernel_size=3,
             conv_cfg=conv_cfg,
             norm_cfg=norm_cfg,
@@ -222,9 +224,9 @@ class CSPDarknet(BaseModule):
 
         for i, (in_channels, out_channels, num_blocks, add_identity,
                 use_spp) in enumerate(arch_setting):
-            in_channels = int(in_channels * widen_factor)
-            out_channels = int(out_channels * widen_factor)
-            num_blocks = max(round(num_blocks * deepen_factor), 1)
+            in_channels = int(in_channels * widen_factor[i])
+            out_channels = int(out_channels * widen_factor[i + 1])
+            num_blocks = max(round(num_blocks * deepen_factor[i]), 1)
             stage = []
             conv_layer = conv(
                 in_channels,
@@ -273,7 +275,7 @@ class CSPDarknet(BaseModule):
                     param.requires_grad = False
 
     def train(self, mode=True):
-        super(CSPDarknet, self).train(mode)
+        super(CSPDarknet_tfs, self).train(mode)
         self._freeze_stages()
         if mode and self.norm_eval:
             for m in self.modules():

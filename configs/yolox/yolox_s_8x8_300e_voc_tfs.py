@@ -4,14 +4,13 @@ _base_ = [
 ]
 
 img_scale = (640, 640)
-widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-widen_factor = [0.25, 0.25, 0.25, 0.25, 0.25]
-deepen_factor_range = [0.33, 1.0]
+widen_factor_range = [0.125, 0.25, 0.375, 0.5]
+widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
+deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = False
 search_neck = False
 search_head = False
-find_unused_parameters=True
 
 # model settings
 model = dict(
@@ -29,7 +28,8 @@ model = dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
-        in_channels=[64, 128, 256],
+        # in_channels=[64, 128, 256],
+        in_channels=[32, 64, 128],
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
@@ -175,7 +175,8 @@ custom_hooks = [
         priority=49)
 ]
 
-checkpoint_config = dict(interval=interval)
+checkpoint_config = dict(interval=interval) # 5
+
 evaluation = dict(
     save_best='auto',
     # The evaluation interval is 'interval' when running epoch is

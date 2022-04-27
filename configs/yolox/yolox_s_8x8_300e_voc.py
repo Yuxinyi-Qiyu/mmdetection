@@ -8,10 +8,12 @@ model = dict(
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.25),
+    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.125),
     neck=dict(
         type='YOLOXPAFPN',
-        in_channels=[64, 128, 256],
+        # in_channels=[96, 192, 384],
+        # in_channels=[64, 128, 256],
+        in_channels=[32, 64, 128],
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
@@ -151,10 +153,6 @@ custom_hooks = [
         priority=49)
 ]
 
-<<<<<<< Updated upstream
-checkpoint_config = dict(interval=interval)
-=======
->>>>>>> Stashed changes
 
 evaluation = dict(
     save_best='auto',

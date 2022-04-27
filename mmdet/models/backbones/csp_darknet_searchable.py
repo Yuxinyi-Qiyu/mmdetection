@@ -177,13 +177,6 @@ class CSPDarknet_Searchable(BaseModule):
                [256, 512, 9, True, False], [512, 768, 3, True, False],
                [768, 1024, 3, False, True]]
     }
-    # arch_settings = {
-    #     'P5': [[128, 256, 3, True, False], [256, 512, 9, True, False],
-    #            [512, 1024, 9, True, False], [1024, 2048, 3, False, True]],
-    #     'P6': [[64, 128, 3, True, False], [128, 256, 9, True, False],
-    #            [256, 512, 9, True, False], [512, 768, 3, True, False],
-    #            [768, 1024, 3, False, True]]
-    # }
 
     def __init__(self,
                  arch='P5',
@@ -222,8 +215,6 @@ class CSPDarknet_Searchable(BaseModule):
         self.norm_eval = norm_eval
         self.widen_factor = widen_factor
         self.deepen_factor = deepen_factor # todo
-        # self.stack_times = 24 #3+9+9+3
-
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
 
         self.stem = Focus(
@@ -239,7 +230,6 @@ class CSPDarknet_Searchable(BaseModule):
                 use_spp) in enumerate(arch_setting):
             in_channels = int(in_channels * widen_factor[i])
             out_channels = int(out_channels * widen_factor[i + 1])
-            # num_blocks = max(round(num_blocks * deepen_factor), 1)
             num_blocks = max(round(num_blocks * deepen_factor[i]), 1)
             stage = []
             conv_layer = conv(
@@ -274,14 +264,11 @@ class CSPDarknet_Searchable(BaseModule):
             self.add_module(f'stage{i + 1}', nn.Sequential(*stage))
             self.layers.append(f'stage{i + 1}')
 
-        # print(self.layers) #['stem', 'stage1', 'stage2', 'stage3', 'stage4']
-        # print("<<<<<<<<<<<<<<<<<backbone")
+        # print('model')
         # for i, layer_name in enumerate(self.layers):
         #     layer = getattr(self, layer_name)
-        #     print("i="+str(i)+":"+str(layer.type))
-        # layer = getattr(self, 'stage1')
-        # print(layer)
-        # print(layer[0])
+        #     print(layer_name)
+        #     print(layer)
 
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
@@ -308,17 +295,9 @@ class CSPDarknet_Searchable(BaseModule):
         #  [256, 512, 9, True, False], [512, 1024, 3, False, True]]
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
-            # print(layer_name)
-            # print(x.size())
 
-            # x = layer(x)
-
-            # print("fin!")
             if layer_name == 'stem':
-                # print(x.size())
-                # print(layer)
                 x = layer(x)
-                # print("stem fin!")
                 continue
 
             _, _, num_blocks, add_identity, use_spp = arch_setting[stage]
