@@ -25,10 +25,10 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
     This runner train models epoch by epoch.
     """
     def __init__(self,
-                 widen_factor_range=[0, 1],
-                 deepen_factor_range=[0, 1],
-                 search_backbone=True,
-                 search_neck=True,
+                 widen_factor_range=[0.125, 0.25, 0.375, 0.5],
+                 deepen_factor_range=[0.33],
+                 search_backbone=False,
+                 search_neck=False,
                  search_head=False,
                  sandwich=False,
                  **kwargs):
@@ -59,7 +59,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         if 'log_vars' in outputs:
             self.log_buffer.update(outputs['log_vars'], outputs['num_samples'])
         self.outputs = outputs
-        
+
     def get_cand_arch(self, max_arch=False, min_arch=False):
         arch = {}
         if self.search_backbone:
@@ -92,7 +92,6 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         self._max_iters = self._max_epochs * len(self.data_loader)
         self.call_hook('before_train_epoch')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
-
         for i, data_batch in enumerate(self.data_loader):
             self._inner_iter = i
             self.call_hook('before_train_iter')

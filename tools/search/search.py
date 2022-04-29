@@ -84,7 +84,7 @@ class EvolutionSearcher(object):
         self.search_neck = True
         self.search_head = True
         # self.log_dir = os.path.join(os.path.split(args.checkpoint)[0], 'ea')
-        self.log_dir = '/summary'
+        self.log_dir = './summary'
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         self.checkpoint_name = os.path.join(self.log_dir, 'ea_'

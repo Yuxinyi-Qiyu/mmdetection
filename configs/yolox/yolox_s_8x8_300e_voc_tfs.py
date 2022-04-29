@@ -11,6 +11,7 @@ deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = False
 search_neck = False
 search_head = False
+find_unused_prameters = True
 
 # model settings
 model = dict(
@@ -20,14 +21,14 @@ model = dict(
     random_size_interval=10,
     backbone=dict( # 2
         type='CSPDarknet_Searchable',
-        conv_cfg=dict(type='USConv2d'),
-        norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
+        # conv_cfg=dict(type='USConv2d'),
+        # norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
         deepen_factor=deepen_factor,
         widen_factor=widen_factor),
     neck=dict( # 3
         type='YOLOXPAFPN_Searchable',
-        conv_cfg=dict(type='USConv2d'),
-        norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
+        # conv_cfg=dict(type='USConv2d'),
+        # norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001),
         # in_channels=[64, 128, 256],
         in_channels=[32, 64, 128],
         out_channels=128,

@@ -87,7 +87,7 @@ def parse_args():
              'submit it to the test server')
     parser.add_argument(
         '--eval',
-        default='bbox',
+        default='mAP',
         type=str,
         nargs='+',
         help='evaluation metrics, which depends on the dataset, e.g., "bbox",'
@@ -234,9 +234,6 @@ def get_model(cfg, args):
         train_cfg=cfg.get('train_cfg'),
         test_cfg=cfg.get('test_cfg'))
 
-    # print("model")
-    # print(model)
-
     # checkpoint里有两份权重，yolox是会额外存一个ema的权重
     # ema problem：https://githubhot.com/repo/open-mmlab/mmdetection/issues/6156
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
@@ -252,9 +249,7 @@ def get_model(cfg, args):
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
 
-
     return model, distributed
-
 
 def train_model(model, datasets, cfg, distributed, meta):
     # timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())

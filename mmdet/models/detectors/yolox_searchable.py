@@ -78,6 +78,7 @@ class YOLOX_Searchable(SingleStageDetector):
         self.archs = archs
 
     def set_arch(self, arch, **kwargs):
+        print("set_arch")
         self.arch = arch
         if self.search_backbone:
             self.backbone.set_arch(self.arch)

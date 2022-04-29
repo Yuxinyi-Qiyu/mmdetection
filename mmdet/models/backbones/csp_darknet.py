@@ -284,6 +284,7 @@ class CSPDarknet(BaseModule):
         outs = []
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
+            print(layer)
             x = layer(x)
             if i in self.out_indices:
                 outs.append(x)

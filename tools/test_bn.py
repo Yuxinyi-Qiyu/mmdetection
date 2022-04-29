@@ -251,7 +251,6 @@ def get_broadcast(cand):
         cand = cand.item()
     return cand
 
-
 widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
 deepen_factor_range = [0.33, 1.0]
 
@@ -279,8 +278,6 @@ def form_arch(k):
     arch = {'widen_factor': tuple(widen_factor), 'deepen_factor': tuple(deepen_factor)}
 
     return arch
-
-
 
 def get_random_arch():
     widen_factor = []
@@ -444,6 +441,7 @@ def main():
             dataset_train.format_results(outputs, **kwargs)
         if args.eval:
             print("args.eval")
+            # print(args.eval)
             eval_kwargs = cfg.get('evaluation', {}).copy()
             # hard-code way to remove EvalHook args
             for key in [
@@ -453,8 +451,8 @@ def main():
                 eval_kwargs.pop(key, None)
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
             metric = dataset_train.evaluate(outputs, **eval_kwargs)
-            print(metric)
-
+            # print(eval_kwargs)
+            # print(metric)
             metric_dict = dict(config=args.config, metric=metric)
             if args.work_dir is not None and rank == 0:
                 mmcv.dump(metric_dict, json_file)
