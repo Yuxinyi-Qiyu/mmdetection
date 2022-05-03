@@ -16,14 +16,14 @@ lr_config = dict(
     num_last_epochs=15,
     min_lr_ratio=0.05)
 runner = dict(
-    type='EpochBasedRunnerSuper',
+    type='EpochBasedRunner_tfs',
     max_epochs=300,
     widen_factor_range=[0.125, 0.25, 0.375, 0.5],
     deepen_factor_range=[0.33],
-    search_backbone=False,
-    search_neck=False,
+    search_backbone=True,
+    search_neck=True,
     search_head=False)
-checkpoint_config = dict(interval=10)
+checkpoint_config = dict(interval=10, type='CheckpointHook_nolog')
 log_config = dict(interval=50, hooks=[dict(type='TextLoggerHook')])
 custom_hooks = [
     dict(type='YOLOXModeSwitchHook', num_last_epochs=15, priority=48),
@@ -41,15 +41,15 @@ resume_from = None
 workflow = [('train', 1)]
 opencv_num_threads = 0
 mp_start_method = 'fork'
-img_scale = (640, 640)
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
 widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
-search_backbone = False
-search_neck = False
+search_backbone = True
+search_neck = True
 search_head = False
-find_unused_prameters = True
+img_scale = (640, 640)
+find_unused_parameters = True
 model = dict(
     type='YOLOX_Searchable',
     input_size=(640, 640),
@@ -57,15 +57,19 @@ model = dict(
     random_size_interval=10,
     backbone=dict(
         type='CSPDarknet_Searchable',
+        conv_cfg=dict(type='USConv2d'),
+        norm_cfg=dict(type='USBN2d'),
         deepen_factor=[0.33, 0.33, 0.33, 0.33],
         widen_factor=[0.125, 0.125, 0.125, 0.125, 0.125]),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
+        conv_cfg=dict(type='USConv2d'),
+        norm_cfg=dict(type='USBN2d'),
         in_channels=[32, 64, 128],
-        out_channels=128,
+        out_channels=256,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128),
+        type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 data_root = 'data/VOCdevkit/'
@@ -233,8 +237,7 @@ data = dict(
 max_epochs = 300
 num_last_epochs = 15
 interval = 10
-evaluation = dict(
-    save_best='auto', interval=10, dynamic_intervals=[(285, 1)], metric='mAP')
+evaluation = dict(save_best='auto', interval=10, metric='mAP')
 work_dir = 'widen0.125newsuper'
 auto_resume = False
 gpu_ids = range(0, 8)

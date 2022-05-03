@@ -18,12 +18,14 @@ torch.cuda.manual_seed_all(0)
 np.random.seed(0)
 random.seed(0)
 
+
 @RUNNERS.register_module()
 class EpochBasedRunnerSuper(EpochBasedRunner):
     """Epoch-based Runner.
 
     This runner train models epoch by epoch.
     """
+
     def __init__(self,
                  widen_factor_range=[0.125, 0.25, 0.375, 0.5],
                  deepen_factor_range=[0.33],
@@ -36,7 +38,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         self.deepen_factor_range = deepen_factor_range,
         self.search_backbone = search_backbone
         self.search_neck = search_neck
-        self.search_head =  search_head
+        self.search_head = search_head
         self.sandwich = sandwich
 
         self.arch = None
@@ -49,7 +51,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
                 self.model, data_batch, train_mode=train_mode, **kwargs)
         elif train_mode:
             outputs = self.model.train_step(data_batch, self.optimizer,
-                                                **kwargs)
+                                            **kwargs)
         else:
             outputs = self.model.val_step(data_batch, self.optimizer, **kwargs)
         if not isinstance(outputs, dict):
@@ -63,12 +65,13 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
     def get_cand_arch(self, max_arch=False, min_arch=False):
         arch = {}
         if self.search_backbone:
-            widen_factor_range = self.widen_factor_range[0] # todo ??  ([0,1],)
-            deepen_factor_range = self.deepen_factor_range[0] # todo??
+            widen_factor_range = self.widen_factor_range[0]  # todo ??  ([0,1],)
+            deepen_factor_range = self.deepen_factor_range[0]  # todo??
             arch['widen_factor'] = []
             arch['deepen_factor'] = []
             for i in range(5):
-                arch['widen_factor'].append(widen_factor_range[np.random.randint(0, len(widen_factor_range))]) #todo [0,1]
+                arch['widen_factor'].append(
+                    widen_factor_range[np.random.randint(0, len(widen_factor_range))])  # todo [0,1]
             for i in range(4):
                 arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
 
@@ -92,6 +95,7 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         self._max_iters = self._max_epochs * len(self.data_loader)
         self.call_hook('before_train_epoch')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
+
         for i, data_batch in enumerate(self.data_loader):
             self._inner_iter = i
             self.call_hook('before_train_iter')

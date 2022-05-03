@@ -122,6 +122,7 @@ def parse_args():
     parser.add_argument('--m_prob', type=float, default=0.1)
     parser.add_argument('--crossover-num', type=int, default=25)
     parser.add_argument('--mutation-num', type=int, default=25)
+    parser.add_argument('--params-limit', type=float, default=205)
     parser.add_argument('--flops-limit', type=float, default=None)  # 17.651 M 122.988 GFLOPS
     parser.add_argument('--shape',
                         type=int,

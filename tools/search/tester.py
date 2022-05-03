@@ -173,6 +173,8 @@ def get_cand_map(model, args, distributed, cfg, train_data_loader, train_dataset
                 eval_kwargs.pop(key, None)
 
             eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            print("eval_kwargs")
+            print(eval_kwargs)
             metric = train_dataset.evaluate(outputs, **eval_kwargs)
             print(metric)
 

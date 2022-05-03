@@ -113,6 +113,7 @@ def parse_args():
     parser.add_argument('--m_prob', type=float, default=0.1)
     parser.add_argument('--crossover-num', type=int, default=5)
     parser.add_argument('--mutation-num', type=int, default=5)
+    parser.add_argument('--params-limit', type=float, default=205)
     parser.add_argument('--flops-limit', type=float, default=205)  # 17.651 M 122.988 GFLOPS
     parser.add_argument('--shape',
                         type=int,
@@ -172,8 +173,8 @@ def dict_to_tuple(arch):
 
 
 def tuple_to_dict(cand_tuple):
-    arch = {'widen_factor': cand_tuple[:5],
-            'deepen_factor': cand_tuple[5:]
+    arch = {'widen_factor_idx': cand_tuple[:5],
+            'deepen_factor_idx': cand_tuple[5:]
             }
     return arch
 

@@ -295,7 +295,6 @@ class CSPDarknet_Searchable(BaseModule):
         #  [256, 512, 9, True, False], [512, 1024, 3, False, True]]
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
-            # print(layer)
 
             if layer_name == 'stem':
                 x = layer(x)
@@ -307,26 +306,22 @@ class CSPDarknet_Searchable(BaseModule):
             # print("layer[0]")
             # print(layer)
             x = layer[0](x)
-            # print(layer[0])
             # print("fin!")
 
             # spp
             use_spp_x = 1 if use_spp else 0
             if use_spp:
                 x = layer[1](x)
-                # print(layer[1])
 
             # csp layer todo:如何直接调用csp layer的forward函数
             num_blocks = max(round(num_blocks * self.deepen_factor[i - 1]), 1)
             # print("num_blocks"+str(num_blocks))
-            # print(layer[1 + use_spp_x])
             x_short = layer[1 + use_spp_x].short_conv(x) # todo name
             x_main = layer[1 + use_spp_x].main_conv(x)
 
             darknetbottleneck = layer[1 + use_spp_x].blocks  # Sequential
             for block_num in range(num_blocks):
                 identity = x_main
-                # print(darknetbottleneck[block_num])
                 out = darknetbottleneck[block_num].conv1(x_main)
                 out = darknetbottleneck[block_num].conv2(out)
 
