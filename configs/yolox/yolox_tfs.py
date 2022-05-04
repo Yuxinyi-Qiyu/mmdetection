@@ -5,12 +5,16 @@ _base_ = [
 
 img_scale = (640, 640)
 widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
-widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5]
-deepen_factor_range = [0.33, 1.0]
+# widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5]
+widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0]
+deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = False
 search_neck = False
 search_head = False
+sandwich = False
+# sandwich = True
+inplace = 'NonLocal' # 'L2Softmax'
 # find_unused_parameters=True
 
 # model settings
@@ -25,8 +29,9 @@ model = dict(
         widen_factor=widen_factor),
     neck=dict( # 3
         type='YOLOXPAFPN',
-        # in_channels=[64, 128, 256],
-        in_channels=[32, 64, 128],
+        # in_channels=[128, 256, 512],
+        in_channels=[256, 512, 1024],
+        # in_channels=[32, 64, 128],
         out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
@@ -35,6 +40,41 @@ model = dict(
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
+
+# model = dict(
+#     # type='YOLOX_Searchable',
+#     type='YOLOX_Searchable_Sandwich',
+#     input_size=img_scale,
+#     random_size_range=(15, 25),
+#     random_size_interval=10,
+#     inplace=inplace,
+#     search_backbone=search_backbone,
+#     search_neck=search_neck,
+#     search_head=search_head,
+#     backbone=dict(
+#         type='CSPDarknet_Searchable',
+#         conv_cfg=dict(type='USConv2d'),
+#         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
+#         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
+#         deepen_factor=deepen_factor,
+#         widen_factor=widen_factor),
+#     neck=dict(
+#         type='YOLOXPAFPN_Searchable',
+#         conv_cfg=dict(type='USConv2d'),
+#         norm_cfg=dict(type='USBN2d'),
+#         in_channels=[128, 256, 512],
+#         # 测试的时候不能换，checkpoint会因为结构不一样加载不进来
+#         # 下次训练的时候给改了
+#         # in_channels=[256, 512, 1024],
+#         # out_channels=128,
+#         out_channels=256,
+#         num_csp_blocks=1),
+#     bbox_head=dict(
+#         type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256), # feat_channels 是啥
+#     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
+#     # In order to align the source code, the threshold of the val phase is
+#     # 0.01, and the threshold of the test phase is 0.001.
+#     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
 
 # dataset settings
 data_root = 'data/VOCdevkit/'
@@ -179,4 +219,3 @@ evaluation = dict(
     metric='mAP')
 
 log_config = dict(interval=50)
-

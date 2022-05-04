@@ -9,7 +9,8 @@ checkpoint_config = dict(type='CheckpointHook_nolog', interval=10)
 # widen_factor_range = [0, 1.0]
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
 # widen_factor = [1.0, 1.0, 1.0, 1.0, 1.0] # 每个stage的factor,最后一个表示stage4的outchannel
-widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
+# widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
+widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
 search_backbone = True
@@ -25,17 +26,8 @@ runner = dict(type='EpochBasedRunner_tfs', max_epochs=300,
               search_neck=search_neck,
               search_head=search_head
               )
-# runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-# log_config = dict(
-#     interval=50,
-#     hooks=[
-#         dict(type='TextLoggerHook'),
-#         # dict(type='TensorboardLoggerHook')
-#     ])
+
 find_unused_parameters=True
-
-
-
 
 optimizer = dict(
     type='SGD',
@@ -69,14 +61,14 @@ model = dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
-        # in_channels=[128, 256, 512],
+        in_channels=[128, 256, 512],
         # in_channels=[96, 192, 384],
-        in_channels=[32, 64, 128],
+        # in_channels=[32, 64, 128],
         # out_channels=128,
-        out_channels=256,
+        out_channels=128,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=256, feat_channels=256), # feat_channels 是啥
+        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=256), # feat_channels 是啥
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.

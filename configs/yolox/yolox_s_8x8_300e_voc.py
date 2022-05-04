@@ -1,7 +1,7 @@
 _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 
 img_scale = (640, 640)
-
+checkpoint_config = dict(interval=50)
 # model settings
 model = dict(
     type='YOLOX',
