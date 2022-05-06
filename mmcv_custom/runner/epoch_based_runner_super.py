@@ -67,21 +67,30 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
         if self.search_backbone:
             widen_factor_range = self.widen_factor_range[0]  # todo ??  ([0,1],)
             deepen_factor_range = self.deepen_factor_range[0]  # todo??
-            arch['widen_factor'] = []
+            arch['widen_factor_backbone'] = []
             arch['deepen_factor'] = []
+            arch['widen_factor_neck'] = []
             for i in range(5):
-                arch['widen_factor'].append(
+                arch['widen_factor_backbone'].append(
                     widen_factor_range[np.random.randint(0, len(widen_factor_range))])  # todo [0,1]
             for i in range(4):
                 arch['deepen_factor'].append(deepen_factor_range[np.random.randint(0, len(deepen_factor_range))])
+            for i in range(3):
+                arch['widen_factor_neck'].append(
+                    widen_factor_range[np.random.randint(0, len(widen_factor_range))])
+            arch['widen_factor_head'] = widen_factor_range[np.random.randint(0, len(widen_factor_range))]
 
             # sandwich
             if max_arch:
-                arch['widen_factor'] = [0.5, 0.5, 0.5, 0.5, 0.5]
+                arch['widen_factor_backbone'] = [0.5, 0.5, 0.5, 0.5, 0.5]
                 arch['deepen_factor'] = [0.33, 0.33, 0.33, 0.33]
+                arch['widen_factor_neck'] = [0.5, 0.5, 0.5]
+                arch['widen_factor_head'] = 0.5
             if min_arch:
-                arch['widen_factor'] = [0.125, 0.125, 0.125, 0.125, 0.125]
+                arch['widen_factor_backbone'] = [0.125, 0.125, 0.125, 0.125, 0.125]
                 arch['deepen_factor'] = [0.33, 0.33, 0.33, 0.33]
+                arch['widen_factor_neck'] = [0.125, 0.125, 0.125]
+                arch['widen_factor_head'] = 0.125
 
         return arch
 

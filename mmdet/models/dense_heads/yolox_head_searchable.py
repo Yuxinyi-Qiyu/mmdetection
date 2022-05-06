@@ -52,6 +52,7 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
     def __init__(self,
                  num_classes,
                  in_channels,
+                 widen_factor=1.0,
                  feat_channels=256,
                  stacked_convs=2,
                  strides=[8, 16, 32],
@@ -92,6 +93,7 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
         self.num_classes = num_classes
         self.cls_out_channels = num_classes
         self.in_channels = in_channels
+        self.widen_factor = widen_factor
         self.feat_channels = feat_channels
         self.stacked_convs = stacked_convs
         self.strides = strides
@@ -117,6 +119,8 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
         self.test_cfg = test_cfg
         self.train_cfg = train_cfg
 
+        self.base_channel = 256
+
         self.sampling = False
         if self.train_cfg:
             self.assigner = build_assigner(self.train_cfg.assigner)
@@ -126,6 +130,17 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
 
         self.fp16_enabled = False
         self._init_layers()
+
+        self.conv1x1 = nn.ModuleList()
+        for i in range(3):
+            self.conv1x1.append(
+                ConvModule(
+                    in_channels,
+                    int(in_channels * widen_factor),
+                    1,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=act_cfg))
 
     def _init_layers(self):
         self.multi_level_cls_convs = nn.ModuleList()
@@ -146,7 +161,7 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
         conv = DepthwiseSeparableConvModule \
             if self.use_depthwise else ConvModule
         stacked_convs = []
-        for i in range(self.stacked_convs):
+        for i in range(self.stacked_convs): # self.stacked_convs = 2  0,1
             chn = self.in_channels if i == 0 else self.feat_channels
             if self.dcn_on_last_conv and i == self.stacked_convs - 1:
                 conv_cfg = dict(type='DCNv2')
@@ -205,6 +220,18 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
                 4D-tensor of shape (batch_size, 5+num_classes, height, width).
         """
 
+        new_feats = []
+        for i in range(len(feats)):
+            new_feats.append(self.conv1x1[i](feats[i]))
+        feats = tuple(new_feats)
+
+        # print(self.multi_level_cls_convs,
+        #                    self.multi_level_reg_convs,
+        #                    self.multi_level_conv_cls,
+        #                    self.multi_level_conv_reg,
+        #                    self.multi_level_conv_obj)
+
+        # 对feats使用forward_single函数，后面的conv均为参数
         return multi_apply(self.forward_single, feats,
                            self.multi_level_cls_convs,
                            self.multi_level_reg_convs,
@@ -488,3 +515,21 @@ class YOLOXHead_Searchable(BaseDenseHead, BBoxTestMixin):
         l1_target[:, :2] = (gt_cxcywh[:, :2] - priors[:, :2]) / priors[:, 2:]
         l1_target[:, 2:] = torch.log(gt_cxcywh[:, 2:] / priors[:, 2:] + eps)
         return l1_target
+
+    def set_arch(self, arch, **kwargs):
+        widen_factor_head = arch['widen_factor_head']
+        channel = int(self.in_channels * widen_factor_head)
+
+        for i in range(3):
+            self.conv1x1[i].conv.out_channels = channel
+            self.conv1x1[i].bn.num_features = channel
+
+        for i in range(3):
+            self.multi_level_cls_convs[i][0].conv.in_channels = channel
+            self.multi_level_reg_convs[i][0].conv.in_channels = channel
+        # print(self.conv1x1)
+        # print(self.multi_level_cls_convs,
+        #       self.multi_level_reg_convs,
+        #       self.multi_level_conv_cls,
+        #       self.multi_level_conv_reg,
+        #       self.multi_level_conv_obj)

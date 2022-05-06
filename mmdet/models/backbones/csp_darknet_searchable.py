@@ -341,7 +341,7 @@ class CSPDarknet_Searchable(BaseModule):
         # base_channel = 64
         # base_channel = arch['base_c']  # 修改base channel
         # factor = [1, 2, 4 ,8, 16] # 每个stage的in_channel对应basechannel的倍数
-        widen_factor = arch['widen_factor']
+        widen_factor = arch['widen_factor_backbone']
         # base_channel = max(int(self.arch_settings['P5'][0][0] * widen_factor // 16 * 16), 16)#todo
         # print("base_channel:"+str(base_channel))
         deepen_factor = arch['deepen_factor']

@@ -7,13 +7,16 @@ checkpoint_config = dict(interval=50)
 
 # widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
-widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
+widen_factor_backbone = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
+# widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
 # deepen_factor_range = [0.33, 1.0]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
+widen_factor_neck = [0.5, 0.5, 0.5]
+widen_factor_head = 0.5
 search_backbone = True
 search_neck = True
-search_head = False
+search_head = True
 # sandwich = False
 sandwich = True
 inplace = 'NonLocal' # 'L2Softmax'
@@ -57,20 +60,29 @@ model = dict(
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
         norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
         deepen_factor=deepen_factor,
-        widen_factor=widen_factor),
+        widen_factor=widen_factor_backbone),
     neck=dict(
         type='YOLOXPAFPN_Searchable',
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
         in_channels=[128, 256, 512],
+        # in_channels=[32, 64, 128],
         # 测试的时候不能换，checkpoint会因为结构不一样加载不进来
         # 下次训练的时候给改了
         # in_channels=[256, 512, 1024],
         # out_channels=128,
         out_channels=128,
+        widen_factor = widen_factor_neck,
         num_csp_blocks=1),
     bbox_head=dict(
-        type='YOLOXHead', num_classes=20, in_channels=128, feat_channels=128), # feat_channels 是啥
+        type='YOLOXHead_Searchable',
+        num_classes=20,
+        in_channels=128,
+        widen_factor=widen_factor_head,
+        feat_channels=128,
+        conv_cfg=dict(type='USConv2d'),
+        norm_cfg=dict(type='USBN2d'),
+    ),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -146,7 +158,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=1,
     workers_per_gpu=4,
     # samples_per_gpu=1,
     # workers_per_gpu=1,

@@ -107,6 +107,8 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
             self.backbone.set_arch(self.arch)
         if self.search_neck:
             self.neck.set_arch(self.arch)
+        if self.search_head:
+            self.bbox_head.set_arch(self.arch)
 
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck."""

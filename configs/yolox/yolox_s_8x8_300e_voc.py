@@ -8,7 +8,8 @@ model = dict(
     input_size=img_scale,
     random_size_range=(15, 25),
     random_size_interval=10,
-    backbone=dict(type='CSPDarknet', deepen_factor=0.33, widen_factor=0.125),
+    backbone=dict(type='CSPDarknet', deepen_factor=0.33,
+                  widen_factor=[0.125, 0.125, 0.125, 0.125, 0.125]),
     neck=dict(
         type='YOLOXPAFPN',
         # in_channels=[96, 192, 384],
