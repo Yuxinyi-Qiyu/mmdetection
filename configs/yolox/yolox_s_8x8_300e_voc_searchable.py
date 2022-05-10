@@ -12,8 +12,9 @@ widen_factor_backbone = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后�
 # deepen_factor_range = [0.33, 1.0]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
-widen_factor_neck = [0.5, 0.5, 0.5]
-widen_factor_head = 0.5
+widen_factor_neck = [0.5, 0.5, 0.5, 0.5]
+widen_factor_neck_out = 0.5
+# widen_factor_head = 0.5
 search_backbone = True
 search_neck = True
 search_head = True
@@ -66,19 +67,19 @@ model = dict(
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
         in_channels=[128, 256, 512],
-        # in_channels=[32, 64, 128],
         # 测试的时候不能换，checkpoint会因为结构不一样加载不进来
-        # 下次训练的时候给改了
-        # in_channels=[256, 512, 1024],
-        # out_channels=128,
         out_channels=128,
-        widen_factor = widen_factor_neck,
+        widen_factor=widen_factor_neck,
+        # widen_factor_in = widen_factor_in_neck,
+        widen_factor_out=widen_factor_neck_out,
         num_csp_blocks=1),
     bbox_head=dict(
         type='YOLOXHead_Searchable',
+        # type='YOLOXHead',
         num_classes=20,
         in_channels=128,
-        widen_factor=widen_factor_head,
+        widen_factor_neck=widen_factor_neck_out,
+        # widen_factor=widen_factor_head,
         feat_channels=128,
         conv_cfg=dict(type='USConv2d'),
         norm_cfg=dict(type='USBN2d'),
@@ -158,7 +159,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=1,
+    samples_per_gpu=8,
     workers_per_gpu=4,
     # samples_per_gpu=1,
     # workers_per_gpu=1,
@@ -233,6 +234,8 @@ evaluation = dict(
     metric='mAP')
 
 log_config = dict(interval=50)
+
+
 
 
 

@@ -35,7 +35,8 @@ class YOLOXPAFPN_Searchable(BaseModule):
     def __init__(self,
                  in_channels,
                  out_channels,
-                 widen_factor=[0.5, 0.5 ,0.5],
+                 widen_factor=[0.5, 0.5, 0.5, 0.5],
+                 widen_factor_out=0.5,
                  num_csp_blocks=3,
                  use_depthwise=False,
                  upsample_cfg=dict(scale_factor=2, mode='nearest'),
@@ -51,44 +52,58 @@ class YOLOXPAFPN_Searchable(BaseModule):
                      nonlinearity='leaky_relu')):
         super(YOLOXPAFPN_Searchable, self).__init__(init_cfg)
         self.widen_factor = widen_factor
+        self.widen_factor_out = widen_factor_out
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.base_channels = [256, 512, 1024]
-        new_channels = []
-        for i in range(len(self.base_channels)):
-            new_channels.append(int(self.base_channels[i] * self.widen_factor[i]))
-        self.new_channels = new_channels
+        self.base_channels = [512, 256, 256, 512]
+        self.base_channels_backbone = [256, 512, 1024]
+        self.base_out_channels = 256
+        new_channels_reduce = []
+        for i in range(2):
+            new_channels_reduce.append(int(self.base_channels[i] * self.widen_factor[i]))
+        new_channels_bu = []
+        for i in range(2):
+            new_channels_bu.append(int(self.base_channels[i + 2] * self.widen_factor[i + 2]))
+        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
+        self.new_out_channel = new_out_channel
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
-
+        # print(new_channels_reduce)
+        # print(new_channels_bu)
         self.upsample = nn.Upsample(**upsample_cfg)
         self.conv1x1 = nn.ModuleList()
         self.reduce_layers = nn.ModuleList()
         self.top_down_blocks = nn.ModuleList()
 
-        for idx in range(len(in_channels) - 1, -1, -1):
-            self.conv1x1.append(
-                ConvModule(
-                    in_channels[idx],
-                    new_channels[idx],
-                    1,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    act_cfg=act_cfg))
+        # for idx in range(len(in_channels) - 1, -1, -1):
+        #     self.conv1x1.append(
+        #         ConvModule(
+        #             in_channels[idx],
+        #             new_channels[idx],
+        #             1,
+        #             conv_cfg=conv_cfg,
+        #             norm_cfg=norm_cfg,
+        #             act_cfg=act_cfg))
 
         # build top-down blocks
         for idx in range(len(in_channels) - 1, 0, -1):
             self.reduce_layers.append(
                 ConvModule(
-                    new_channels[idx],
-                    new_channels[idx - 1],
+                    # new_channels[idx],
+                    # new_channels[idx - 1],
+                    in_channels[idx], # 2 1
+                    new_channels_reduce[2 - idx], # 0 1
+                    # in_channels[idx - 1],
                     1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
             self.top_down_blocks.append(
                 CSPLayer(
-                    new_channels[idx - 1] * 2, # 256*2
-                    new_channels[idx - 1], #256
+                    # new_channels[idx - 1] * 2, # 256*2
+                    # new_channels[idx - 1], #256
+                    # in_channels[idx - 1] * 2,
+                    (new_channels_reduce[2 - idx] + in_channels[idx - 1]),
+                    in_channels[idx - 1],
                     num_blocks=num_csp_blocks,
                     add_identity=False,
                     use_depthwise=use_depthwise,
@@ -102,18 +117,22 @@ class YOLOXPAFPN_Searchable(BaseModule):
         for idx in range(len(in_channels) - 1):
             self.downsamples.append(
                 conv(
-                    new_channels[idx],
-                    new_channels[idx],
+                    # new_channels[idx],
+                    # new_channels[idx],
+                    in_channels[idx], # 0, 1
+                    new_channels_bu[idx],
                     3,
                     stride=2,
                     padding=1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
+            # print("bottom_up_blocks")
+            # print(new_channels_reduce[1 - idx] + new_channels_bu[idx])
             self.bottom_up_blocks.append(
                 CSPLayer(
-                    new_channels[idx] * 2,
-                    new_channels[idx + 1],
+                    (new_channels_reduce[1 - idx] + new_channels_bu[idx]),
+                    in_channels[idx + 1],
                     num_blocks=num_csp_blocks,
                     add_identity=False,
                     use_depthwise=use_depthwise,
@@ -125,55 +144,56 @@ class YOLOXPAFPN_Searchable(BaseModule):
         for i in range(len(in_channels)):
             self.out_convs.append(
                 ConvModule(
-                    new_channels[i],
-                    out_channels,
+                    in_channels[i],
+                    new_out_channel,
                     1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
-
-        # print("self.reduce_layers")
-        # print(self.reduce_layers)
-
+        
     def set_arch(self, arch, **kwargs):
         widen_factor_backbone = arch['widen_factor_backbone']
-        in_channels_backbone = []
+        in_channels = []
         for i in range(len(self.in_channels)):
-            in_channels_backbone.append(int(self.base_channels[i] * widen_factor_backbone[i + 2]))
+            in_channels.append(int(self.base_channels_backbone[i] * widen_factor_backbone[i + 2]))
 
         widen_factor_neck = arch['widen_factor_neck']
+        new_channels_reduce = []
+        for i in range(2):
+            new_channels_reduce.append(int(self.base_channels[i] * widen_factor_neck[i]))
+        new_channels_bu = []
+        for i in range(2):
+            new_channels_bu.append(int(self.base_channels[i + 2] * widen_factor_neck[i + 2]))
 
-        new_channels = []
-        for i in range(len(self.base_channels)):
-            new_channels.append(int(self.base_channels[i] * widen_factor_neck[i]))
-        self.new_channels = new_channels
-        in_channels_neck = self.new_channels
-        out_channels = self.out_channels
+        widen_factor_out_neck = arch['widen_factor_neck_out']
+        new_out_channel = int(self.base_out_channels * widen_factor_out_neck)
+        out_channels = new_out_channel
 
         expansion_ratio = 0.5 # todo 搞清楚这是个啥
 
-        for i in range(len(self.in_channels)):
-            self.conv1x1[len(self.in_channels) - 1 - i].conv.in_channels, self.conv1x1[len(self.in_channels) - 1 - i].conv.out_channels = in_channels_backbone[i], in_channels_neck[i]
-            self.conv1x1[len(self.in_channels) - 1 - i].bn.num_features = in_channels_neck[i]
+        # for i in range(len(self.in_channels)):
+        #     self.conv1x1[len(self.in_channels) - 1 - i].conv.in_channels, self.conv1x1[len(self.in_channels) - 1 - i].conv.out_channels = in_channels_backbone[i], in_channels_neck[i]
+        #     self.conv1x1[len(self.in_channels) - 1 - i].bn.num_features = in_channels_neck[i]
 
-        in_channels = in_channels_neck
+        # in_channels = in_channels_neck
 
-        for idx in range(len(self.in_channels) - 1):
+        for idx in range(len(self.in_channels) - 1): # 0, 1
             # reduce_layers
-            in_channel = in_channels[len(in_channels) - 1 - idx]
-            out_channel = in_channels[len(in_channels) - 1 - idx - 1]
-            self.reduce_layers[idx].conv.in_channels, self.reduce_layers[idx].conv.out_channels = in_channel, out_channel
-            self.reduce_layers[idx].bn.num_features = out_channel
+            in_channel = in_channels[len(self.in_channels) - 1 - idx]
+            out_channel_reduce = new_channels_reduce[idx]
+            out_channel_csp = in_channels[len(self.in_channels) - 2 - idx]
+            self.reduce_layers[idx].conv.in_channels, self.reduce_layers[idx].conv.out_channels = in_channel, out_channel_reduce
+            self.reduce_layers[idx].bn.num_features = out_channel_reduce
             # top_down_blocks
-            mid_channel = int(out_channel * expansion_ratio)
+            mid_channel = int(out_channel_csp * expansion_ratio)
             # self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = in_channel, mid_channel
-            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = out_channel * 2, mid_channel
+            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = (out_channel_reduce + out_channel_csp), mid_channel
             self.top_down_blocks[idx].main_conv.bn.num_features = mid_channel
             # self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = in_channel, mid_channel
-            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = out_channel * 2, mid_channel
+            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = (out_channel_reduce + out_channel_csp), mid_channel
             self.top_down_blocks[idx].short_conv.bn.num_features = mid_channel
-            self.top_down_blocks[idx].final_conv.conv.in_channels, self.top_down_blocks[idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel
-            self.top_down_blocks[idx].final_conv.bn.num_features = out_channel
+            self.top_down_blocks[idx].final_conv.conv.in_channels, self.top_down_blocks[idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel_csp
+            self.top_down_blocks[idx].final_conv.bn.num_features = out_channel_csp
             darknetbottleneck = self.top_down_blocks[idx].blocks  # Sequential
             num_blocks = 1
             for block_num in range(num_blocks):
@@ -185,24 +205,25 @@ class YOLOXPAFPN_Searchable(BaseModule):
                     block_num].conv2.conv.out_channels = hidden_channel, mid_channel
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
 
-        for idx in range(len(self.in_channels) - 1):
+        for idx in range(len(self.in_channels) - 1): # 0, 1
+            in_channel = in_channels[idx]
+            out_channel_bu = new_channels_bu[idx]
+            out_channel_csp = in_channels[idx + 1]
+            in_channnel_csp = out_channel_bu + new_channels_reduce[1 - idx]
             # downsamples
-            channel = in_channels[idx]
-            self.downsamples[idx].conv.in_channels, self.downsamples[idx].conv.out_channels = channel, channel
-            self.downsamples[idx].bn.num_features = channel
+            self.downsamples[idx].conv.in_channels, self.downsamples[idx].conv.out_channels = in_channel, out_channel_bu
+            self.downsamples[idx].bn.num_features = out_channel_bu
             # bottom_up_blocks
-            in_channel = channel * 2 # 256
-            out_channel = in_channels[idx + 1]
-            mid_channel = int(out_channel * 0.5) # 128
+            mid_channel = int(out_channel_csp * expansion_ratio) # 128
             self.bottom_up_blocks[idx].main_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].main_conv.conv.out_channels = in_channel, mid_channel
+                idx].main_conv.conv.out_channels = in_channnel_csp, mid_channel
             self.bottom_up_blocks[idx].main_conv.bn.num_features = mid_channel
             self.bottom_up_blocks[idx].short_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].short_conv.conv.out_channels = in_channel, mid_channel
+                idx].short_conv.conv.out_channels = in_channnel_csp, mid_channel
             self.bottom_up_blocks[idx].short_conv.bn.num_features = mid_channel
             self.bottom_up_blocks[idx].final_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel
-            self.bottom_up_blocks[idx].final_conv.bn.num_features = out_channel
+                idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel_csp
+            self.bottom_up_blocks[idx].final_conv.bn.num_features = out_channel_csp
             darknetbottleneck = self.bottom_up_blocks[idx].blocks  # Sequential
             num_blocks = 1
             for block_num in range(num_blocks):
@@ -215,18 +236,17 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
         # upsample?
         # out_convs
-        for idx in range(len(in_channels)):
+        for idx in range(len(self.in_channels)):
             # in_channel = base_channel * factor[idx]
             in_channel = in_channels[idx]
             out_channel = out_channels #todo 现在都是固定的，以后改成可变的
             self.out_convs[idx].conv.in_channels = in_channel
+            self.out_convs[idx].conv.out_channels = out_channel
+            self.out_convs[idx].bn.num_features = out_channel
             # self.out_convs[idx].conv.in_channels, self.out_convs[idx].conv.out_channels = channel, out_channel
             # self.out_convs[idx].bn.num_features = out_channel
-            # self.out_convs[idx].bn.bn.num_features = out_channel
 
         # print("<<<<<<<<<<<<<<<<<<<<")
-        # print("self.conv1x1")
-        # print(self.conv1x1)
         # print("self.reduce_layers")
         # print(self.reduce_layers)
         # print("self.top_down_blocks")
@@ -248,9 +268,10 @@ class YOLOXPAFPN_Searchable(BaseModule):
         """
         assert len(inputs) == len(self.in_channels)
 
-        for idx in range(len(self.in_channels) - 1, -1, -1):
-            inputs[idx] = self.conv1x1[len(self.in_channels) - 1 - idx](inputs[idx])
+        # for idx in range(len(self.in_channels) - 1, -1, -1):
+        #     inputs[idx] = self.conv1x1[len(self.in_channels) - 1 - idx](inputs[idx])
 
+        # print("top_down")
         # top-down path
         inner_outs = [inputs[-1]]
         for idx in range(len(self.in_channels) - 1, 0, -1):
@@ -266,6 +287,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 torch.cat([upsample_feat, feat_low], 1))
             inner_outs.insert(0, inner_out)
 
+        # print("bottom_up")
         # bottom-up path
         outs = [inner_outs[0]]
         for idx in range(len(self.in_channels) - 1):
@@ -277,10 +299,11 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 torch.cat([downsample_feat, feat_height], 1))
             outs.append(out)
 
+        # print("out_conv")
         # out convs
         for idx, conv in enumerate(self.out_convs):
             outs[idx] = conv(outs[idx])
             # print(outs[idx].size())
-
+        # print("finish_neck")
         return tuple(outs)
 
