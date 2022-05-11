@@ -5,14 +5,14 @@ _base_ = [
 # checkpoint_config = dict(type='CheckpointHook_nolog', interval=1)
 checkpoint_config = dict(interval=50)
 
-# widen_factor_range = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]
+
+# primitives=['usconv3','usconv5','']
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
 widen_factor_backbone = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
-# widen_factor = [0.125, 0.125, 0.125, 0.125, 0.125]
-# deepen_factor_range = [0.33, 1.0]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
-widen_factor_neck = [0.5, 0.5, 0.5, 0.5]
+# widen_factor_neck = [0.5, 0.5, 0.5, 0.5]
+widen_factor_neck = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
 widen_factor_neck_out = 0.5
 # widen_factor_head = 0.5
 search_backbone = True

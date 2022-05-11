@@ -38,16 +38,15 @@ custom_hooks = [
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
-resume_from = 'sanwich_supernet2_neck/epoch_50.pth'
+resume_from = None
 workflow = [('train', 1)]
 opencv_num_threads = 0
 mp_start_method = 'fork'
-primitives = ['usconv1', 'usconv3', 'usconv5']
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
 widen_factor_backbone = [0.5, 0.5, 0.5, 0.5, 0.5]
 deepen_factor_range = [0.33]
 deepen_factor = [0.33, 0.33, 0.33, 0.33]
-widen_factor_neck = [0.5, 0.5, 0.5, 0.5]
+widen_factor_neck = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
 widen_factor_neck_out = 0.5
 search_backbone = True
 search_neck = True
@@ -77,7 +76,7 @@ model = dict(
         norm_cfg=dict(type='USBN2d'),
         in_channels=[128, 256, 512],
         out_channels=128,
-        widen_factor=[0.5, 0.5, 0.5, 0.5],
+        widen_factor=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
         widen_factor_out=0.5,
         num_csp_blocks=1),
     bbox_head=dict(
@@ -277,6 +276,6 @@ max_epochs = 300
 num_last_epochs = 15
 interval = 10
 evaluation = dict(save_best='auto', interval=10, metric='mAP')
-work_dir = 'sanwich_supernet2_neck'
+work_dir = 'sanwich_supernet2_neck2'
 auto_resume = False
 gpu_ids = range(0, 8)

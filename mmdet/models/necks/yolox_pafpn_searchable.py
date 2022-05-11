@@ -35,7 +35,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
     def __init__(self,
                  in_channels,
                  out_channels,
-                 widen_factor=[0.5, 0.5, 0.5, 0.5],
+                 widen_factor=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
                  widen_factor_out=0.5,
                  num_csp_blocks=3,
                  use_depthwise=False,
@@ -55,55 +55,76 @@ class YOLOXPAFPN_Searchable(BaseModule):
         self.widen_factor_out = widen_factor_out
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.base_channels = [512, 256, 256, 512]
-        self.base_channels_backbone = [256, 512, 1024]
-        self.base_out_channels = 256
-        new_channels_reduce = []
-        for i in range(2):
-            new_channels_reduce.append(int(self.base_channels[i] * self.widen_factor[i]))
-        new_channels_bu = []
-        for i in range(2):
-            new_channels_bu.append(int(self.base_channels[i + 2] * self.widen_factor[i + 2]))
-        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
-        self.new_out_channel = new_out_channel
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
-        # print(new_channels_reduce)
-        # print(new_channels_bu)
         self.upsample = nn.Upsample(**upsample_cfg)
-        self.conv1x1 = nn.ModuleList()
         self.reduce_layers = nn.ModuleList()
         self.top_down_blocks = nn.ModuleList()
 
-        # for idx in range(len(in_channels) - 1, -1, -1):
-        #     self.conv1x1.append(
-        #         ConvModule(
-        #             in_channels[idx],
-        #             new_channels[idx],
-        #             1,
-        #             conv_cfg=conv_cfg,
-        #             norm_cfg=norm_cfg,
-        #             act_cfg=act_cfg))
+        self.base_out_channels = 256
+        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
+        self.new_out_channel = new_out_channel
+
+        self.base_channels_backbone = [256, 512, 1024]
+        self.base_channels_dict = {
+            'reduce_layers0':512,
+            'reduce_layers1':512,
+            'top_down_blocks0':256,
+            'top_down_blocks1':256,
+            'downsamples0':256,
+            'downsamples1':512,
+            'bottom_up_blocks0':512,
+            'bottom_up_blocks1':1024
+        }
+        # create factor_dictionary
+        self.widen_factor_dict = {
+            'reduce_layers0':widen_factor[0],
+            'reduce_layers1':widen_factor[1],
+            'top_down_blocks0':widen_factor[2],
+            'top_down_blocks1':widen_factor[3],
+            'downsamples0':widen_factor[4],
+            'downsamples1':widen_factor[5],
+            'bottom_up_blocks0':widen_factor[6],
+            'bottom_up_blocks1':widen_factor[7],
+        }
+
+        channels_out_dict = {
+            'reduce_layers0':int(self.widen_factor_dict['reduce_layers0'] * self.base_channels_dict['reduce_layers0']),
+            'reduce_layers1': int(self.widen_factor_dict['reduce_layers1'] * self.base_channels_dict['reduce_layers1']),
+            'top_down_blocks0': int(self.widen_factor_dict['top_down_blocks0'] * self.base_channels_dict['top_down_blocks0']),
+            'top_down_blocks1': int(self.widen_factor_dict['top_down_blocks1'] * self.base_channels_dict['top_down_blocks1']),
+            'downsamples0': int(self.widen_factor_dict['downsamples0'] * self.base_channels_dict['downsamples0']),
+            'downsamples1': int(self.widen_factor_dict['downsamples1'] * self.base_channels_dict['downsamples1']),
+            'bottom_up_blocks0': int(self.widen_factor_dict['bottom_up_blocks0'] * self.base_channels_dict['bottom_up_blocks0']),
+            'bottom_up_blocks1': int(self.widen_factor_dict['bottom_up_blocks1'] * self.base_channels_dict['bottom_up_blocks1']),
+        }
+
+        channels_dict = {
+            'reduce_layers0': [in_channels[2], channels_out_dict['reduce_layers0']],
+            'reduce_layers1': [channels_out_dict['top_down_blocks0'], channels_out_dict['reduce_layers1']],
+            'top_down_blocks0': [(in_channels[1] + channels_out_dict['reduce_layers0']), channels_out_dict['top_down_blocks0']],
+            'top_down_blocks1': [(in_channels[0] + channels_out_dict['reduce_layers1']), channels_out_dict['top_down_blocks1']],
+            'downsamples0': [channels_out_dict['top_down_blocks1'], channels_out_dict['downsamples0']],
+            'downsamples1': [channels_out_dict['bottom_up_blocks0'], channels_out_dict['downsamples1']],
+            'bottom_up_blocks0': [(channels_out_dict['reduce_layers1'] + channels_out_dict['downsamples0']), channels_out_dict['bottom_up_blocks0']],
+            'bottom_up_blocks1': [(channels_out_dict['reduce_layers0'] + channels_out_dict['downsamples1']), channels_out_dict['bottom_up_blocks1']],
+        }
 
         # build top-down blocks
         for idx in range(len(in_channels) - 1, 0, -1):
+            layer_name_reduce = 'reduce_layers'+str(2 - idx)
+            layer_name_td = 'top_down_blocks'+str(2 - idx)
             self.reduce_layers.append(
                 ConvModule(
-                    # new_channels[idx],
-                    # new_channels[idx - 1],
-                    in_channels[idx], # 2 1
-                    new_channels_reduce[2 - idx], # 0 1
-                    # in_channels[idx - 1],
+                    channels_dict[layer_name_reduce][0],
+                    channels_dict[layer_name_reduce][1],
                     1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg))
             self.top_down_blocks.append(
                 CSPLayer(
-                    # new_channels[idx - 1] * 2, # 256*2
-                    # new_channels[idx - 1], #256
-                    # in_channels[idx - 1] * 2,
-                    (new_channels_reduce[2 - idx] + in_channels[idx - 1]),
-                    in_channels[idx - 1],
+                    channels_dict[layer_name_td][0],
+                    channels_dict[layer_name_td][1],
                     num_blocks=num_csp_blocks,
                     add_identity=False,
                     use_depthwise=use_depthwise,
@@ -115,12 +136,13 @@ class YOLOXPAFPN_Searchable(BaseModule):
         self.downsamples = nn.ModuleList()
         self.bottom_up_blocks = nn.ModuleList()
         for idx in range(len(in_channels) - 1):
+            layer_name_downsample = 'downsamples' + str(idx)
+            layer_name_bu = 'bottom_up_blocks' + str(idx)
+
             self.downsamples.append(
                 conv(
-                    # new_channels[idx],
-                    # new_channels[idx],
-                    in_channels[idx], # 0, 1
-                    new_channels_bu[idx],
+                    channels_dict[layer_name_downsample][0],
+                    channels_dict[layer_name_downsample][1],
                     3,
                     stride=2,
                     padding=1,
@@ -131,8 +153,8 @@ class YOLOXPAFPN_Searchable(BaseModule):
             # print(new_channels_reduce[1 - idx] + new_channels_bu[idx])
             self.bottom_up_blocks.append(
                 CSPLayer(
-                    (new_channels_reduce[1 - idx] + new_channels_bu[idx]),
-                    in_channels[idx + 1],
+                    channels_dict[layer_name_bu][0],
+                    channels_dict[layer_name_bu][1],
                     num_blocks=num_csp_blocks,
                     add_identity=False,
                     use_depthwise=use_depthwise,
@@ -141,10 +163,13 @@ class YOLOXPAFPN_Searchable(BaseModule):
                     act_cfg=act_cfg))
 
         self.out_convs = nn.ModuleList()
+        out_convs_in_channel = [channels_dict['top_down_blocks1'][1],
+                             channels_dict['bottom_up_blocks0'][1],
+                             channels_dict['bottom_up_blocks1'][1]]
         for i in range(len(in_channels)):
             self.out_convs.append(
                 ConvModule(
-                    in_channels[i],
+                    out_convs_in_channel[i],
                     new_out_channel,
                     1,
                     conv_cfg=conv_cfg,
@@ -157,43 +182,66 @@ class YOLOXPAFPN_Searchable(BaseModule):
         for i in range(len(self.in_channels)):
             in_channels.append(int(self.base_channels_backbone[i] * widen_factor_backbone[i + 2]))
 
-        widen_factor_neck = arch['widen_factor_neck']
-        new_channels_reduce = []
-        for i in range(2):
-            new_channels_reduce.append(int(self.base_channels[i] * widen_factor_neck[i]))
-        new_channels_bu = []
-        for i in range(2):
-            new_channels_bu.append(int(self.base_channels[i + 2] * widen_factor_neck[i + 2]))
-
         widen_factor_out_neck = arch['widen_factor_neck_out']
         new_out_channel = int(self.base_out_channels * widen_factor_out_neck)
         out_channels = new_out_channel
 
+        self.base_out_channels = 256
+        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
+        self.new_out_channel = new_out_channel
+
+        widen_factor = arch['widen_factor_neck']
+        self.widen_factor_dict = {
+            'reduce_layers0':widen_factor[0],
+            'reduce_layers1':widen_factor[1],
+            'top_down_blocks0':widen_factor[2],
+            'top_down_blocks1':widen_factor[3],
+            'downsamples0':widen_factor[4],
+            'downsamples1':widen_factor[5],
+            'bottom_up_blocks0':widen_factor[6],
+            'bottom_up_blocks1':widen_factor[7],
+        }
+        channels_out_dict = {
+            'reduce_layers0':int(self.widen_factor_dict['reduce_layers0'] * self.base_channels_dict['reduce_layers0']),
+            'reduce_layers1': int(self.widen_factor_dict['reduce_layers1'] * self.base_channels_dict['reduce_layers1']),
+            'top_down_blocks0': int(self.widen_factor_dict['top_down_blocks0'] * self.base_channels_dict['top_down_blocks0']),
+            'top_down_blocks1': int(self.widen_factor_dict['top_down_blocks1'] * self.base_channels_dict['top_down_blocks1']),
+            'downsamples0': int(self.widen_factor_dict['downsamples0'] * self.base_channels_dict['downsamples0']),
+            'downsamples1': int(self.widen_factor_dict['downsamples1'] * self.base_channels_dict['downsamples1']),
+            'bottom_up_blocks0': int(self.widen_factor_dict['bottom_up_blocks0'] * self.base_channels_dict['bottom_up_blocks0']),
+            'bottom_up_blocks1': int(self.widen_factor_dict['bottom_up_blocks1'] * self.base_channels_dict['bottom_up_blocks1']),
+        }
+        channels_dict = {
+            'reduce_layers0': [in_channels[2], channels_out_dict['reduce_layers0']],
+            'reduce_layers1': [channels_out_dict['top_down_blocks0'], channels_out_dict['reduce_layers1']],
+            'top_down_blocks0': [(in_channels[1] + channels_out_dict['reduce_layers0']), channels_out_dict['top_down_blocks0']],
+            'top_down_blocks1': [(in_channels[0] + channels_out_dict['reduce_layers1']), channels_out_dict['top_down_blocks1']],
+            'downsamples0': [channels_out_dict['top_down_blocks1'], channels_out_dict['downsamples0']],
+            'downsamples1': [channels_out_dict['bottom_up_blocks0'], channels_out_dict['downsamples1']],
+            'bottom_up_blocks0': [(channels_out_dict['reduce_layers1'] + channels_out_dict['downsamples0']), channels_out_dict['bottom_up_blocks0']],
+            'bottom_up_blocks1': [(channels_out_dict['reduce_layers0'] + channels_out_dict['downsamples1']), channels_out_dict['bottom_up_blocks1']],
+        }
+
         expansion_ratio = 0.5 # todo 搞清楚这是个啥
-
-        # for i in range(len(self.in_channels)):
-        #     self.conv1x1[len(self.in_channels) - 1 - i].conv.in_channels, self.conv1x1[len(self.in_channels) - 1 - i].conv.out_channels = in_channels_backbone[i], in_channels_neck[i]
-        #     self.conv1x1[len(self.in_channels) - 1 - i].bn.num_features = in_channels_neck[i]
-
-        # in_channels = in_channels_neck
 
         for idx in range(len(self.in_channels) - 1): # 0, 1
             # reduce_layers
-            in_channel = in_channels[len(self.in_channels) - 1 - idx]
-            out_channel_reduce = new_channels_reduce[idx]
-            out_channel_csp = in_channels[len(self.in_channels) - 2 - idx]
-            self.reduce_layers[idx].conv.in_channels, self.reduce_layers[idx].conv.out_channels = in_channel, out_channel_reduce
-            self.reduce_layers[idx].bn.num_features = out_channel_reduce
+            layer_name_reduce = 'reduce_layers' + str(idx)
+            layer_name_td = 'top_down_blocks' + str(idx)
+            self.reduce_layers[idx].conv.in_channels = channels_dict[layer_name_reduce][0]
+            self.reduce_layers[idx].conv.out_channels = channels_dict[layer_name_reduce][1]
+            self.reduce_layers[idx].bn.num_features = channels_dict[layer_name_reduce][1]
             # top_down_blocks
-            mid_channel = int(out_channel_csp * expansion_ratio)
-            # self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = in_channel, mid_channel
-            self.top_down_blocks[idx].main_conv.conv.in_channels, self.top_down_blocks[idx].main_conv.conv.out_channels = (out_channel_reduce + out_channel_csp), mid_channel
+            mid_channel = int(channels_dict[layer_name_td][1] * expansion_ratio)
+            self.top_down_blocks[idx].main_conv.conv.in_channels = channels_dict[layer_name_td][0]
+            self.top_down_blocks[idx].main_conv.conv.out_channels = mid_channel
             self.top_down_blocks[idx].main_conv.bn.num_features = mid_channel
-            # self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = in_channel, mid_channel
-            self.top_down_blocks[idx].short_conv.conv.in_channels, self.top_down_blocks[idx].short_conv.conv.out_channels = (out_channel_reduce + out_channel_csp), mid_channel
+            self.top_down_blocks[idx].short_conv.conv.in_channels = channels_dict[layer_name_td][0]
+            self.top_down_blocks[idx].short_conv.conv.out_channels = mid_channel
             self.top_down_blocks[idx].short_conv.bn.num_features = mid_channel
-            self.top_down_blocks[idx].final_conv.conv.in_channels, self.top_down_blocks[idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel_csp
-            self.top_down_blocks[idx].final_conv.bn.num_features = out_channel_csp
+            self.top_down_blocks[idx].final_conv.conv.in_channels = 2 * mid_channel
+            self.top_down_blocks[idx].final_conv.conv.out_channels = channels_dict[layer_name_td][1]
+            self.top_down_blocks[idx].final_conv.bn.num_features = channels_dict[layer_name_td][1]
             darknetbottleneck = self.top_down_blocks[idx].blocks  # Sequential
             num_blocks = 1
             for block_num in range(num_blocks):
@@ -206,24 +254,23 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
 
         for idx in range(len(self.in_channels) - 1): # 0, 1
-            in_channel = in_channels[idx]
-            out_channel_bu = new_channels_bu[idx]
-            out_channel_csp = in_channels[idx + 1]
-            in_channnel_csp = out_channel_bu + new_channels_reduce[1 - idx]
+            layer_name_downsample = 'downsamples' + str(idx)
+            layer_name_bu = 'bottom_up_blocks' + str(idx)
             # downsamples
-            self.downsamples[idx].conv.in_channels, self.downsamples[idx].conv.out_channels = in_channel, out_channel_bu
-            self.downsamples[idx].bn.num_features = out_channel_bu
+            self.downsamples[idx].conv.in_channels = channels_dict[layer_name_downsample][0]
+            self.downsamples[idx].conv.out_channels = channels_dict[layer_name_downsample][1]
+            self.downsamples[idx].bn.num_features = channels_dict[layer_name_downsample][1]
             # bottom_up_blocks
-            mid_channel = int(out_channel_csp * expansion_ratio) # 128
-            self.bottom_up_blocks[idx].main_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].main_conv.conv.out_channels = in_channnel_csp, mid_channel
+            mid_channel = int(channels_dict[layer_name_bu][1] * expansion_ratio) # 128
+            self.bottom_up_blocks[idx].main_conv.conv.in_channels = channels_dict[layer_name_bu][0]
+            self.bottom_up_blocks[idx].main_conv.conv.out_channels = mid_channel
             self.bottom_up_blocks[idx].main_conv.bn.num_features = mid_channel
-            self.bottom_up_blocks[idx].short_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].short_conv.conv.out_channels = in_channnel_csp, mid_channel
+            self.bottom_up_blocks[idx].short_conv.conv.in_channels = channels_dict[layer_name_bu][0]
+            self.bottom_up_blocks[idx].short_conv.conv.out_channels = mid_channel
             self.bottom_up_blocks[idx].short_conv.bn.num_features = mid_channel
-            self.bottom_up_blocks[idx].final_conv.conv.in_channels, self.bottom_up_blocks[
-                idx].final_conv.conv.out_channels = 2 * mid_channel, out_channel_csp
-            self.bottom_up_blocks[idx].final_conv.bn.num_features = out_channel_csp
+            self.bottom_up_blocks[idx].final_conv.conv.in_channels = 2 * mid_channel
+            self.bottom_up_blocks[idx].final_conv.conv.out_channels = channels_dict[layer_name_bu][1]
+            self.bottom_up_blocks[idx].final_conv.bn.num_features = channels_dict[layer_name_bu][1]
             darknetbottleneck = self.bottom_up_blocks[idx].blocks  # Sequential
             num_blocks = 1
             for block_num in range(num_blocks):
@@ -234,17 +281,16 @@ class YOLOXPAFPN_Searchable(BaseModule):
                 darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[
                     block_num].conv2.conv.out_channels = hidden_channel, mid_channel
                 darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
-        # upsample?
+
         # out_convs
+        out_convs_in_channel = [channels_dict['top_down_blocks1'][1],
+                                channels_dict['bottom_up_blocks0'][1],
+                                channels_dict['bottom_up_blocks1'][1]]
         for idx in range(len(self.in_channels)):
-            # in_channel = base_channel * factor[idx]
-            in_channel = in_channels[idx]
             out_channel = out_channels #todo 现在都是固定的，以后改成可变的
-            self.out_convs[idx].conv.in_channels = in_channel
+            self.out_convs[idx].conv.in_channels = out_convs_in_channel[idx]
             self.out_convs[idx].conv.out_channels = out_channel
             self.out_convs[idx].bn.num_features = out_channel
-            # self.out_convs[idx].conv.in_channels, self.out_convs[idx].conv.out_channels = channel, out_channel
-            # self.out_convs[idx].bn.num_features = out_channel
 
         # print("<<<<<<<<<<<<<<<<<<<<")
         # print("self.reduce_layers")
@@ -268,10 +314,6 @@ class YOLOXPAFPN_Searchable(BaseModule):
         """
         assert len(inputs) == len(self.in_channels)
 
-        # for idx in range(len(self.in_channels) - 1, -1, -1):
-        #     inputs[idx] = self.conv1x1[len(self.in_channels) - 1 - idx](inputs[idx])
-
-        # print("top_down")
         # top-down path
         inner_outs = [inputs[-1]]
         for idx in range(len(self.in_channels) - 1, 0, -1):
