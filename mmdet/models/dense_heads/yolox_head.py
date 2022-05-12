@@ -52,6 +52,7 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
     def __init__(self,
                  num_classes,
                  in_channels,
+                 widen_factor_neck=1.0,
                  feat_channels=256,
                  stacked_convs=2,
                  strides=[8, 16, 32],
@@ -91,7 +92,9 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
         super().__init__(init_cfg=init_cfg)
         self.num_classes = num_classes
         self.cls_out_channels = num_classes
-        self.in_channels = in_channels
+        self.widen_factor_neck = widen_factor_neck
+        self.base_channel = 256
+        self.in_channels = int(self.base_channel * widen_factor_neck)
         self.feat_channels = feat_channels
         self.stacked_convs = stacked_convs
         self.strides = strides

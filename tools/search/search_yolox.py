@@ -125,15 +125,22 @@ class EvolutionSearcher(object):
         return True
 
     def idx_to_arch(self, cand): # cand: idx->factor
-        widen_factor = []
-        for i in range(len(cand['widen_factor_idx'])):  # !!!here 修改cand传递形式，可能是因为broad cast无法传递0。33
-            widen_factor.append(self.widen_factor_range[cand['widen_factor_idx'][i]])
-        deepen_factor = []
-        for i in range(len(cand['deepen_factor_idx'])):
-            deepen_factor.append(self.deepen_factor_range[cand['deepen_factor_idx'][i]])
+        widen_factor_backbone = []
+        for i in range(len(cand['widen_factor_backbone_idx'])):  # !!!here 修改cand传递形式，可能是因为broad cast无法传递0。33
+            widen_factor_backbone.append(self.widen_factor_range[cand['widen_factor_backbone_idx'][i]])
+        deepen_factor_backbone = []
+        for i in range(len(cand['deepen_factor_backbone_idx'])):
+            deepen_factor_backbone.append(self.deepen_factor_range[cand['deepen_factor_backbone_idx'][i]])
+        widen_factor_neck = []
+        for i in range(len(cand['widen_factor_neck_idx'])):
+            widen_factor_neck.append(self.widen_factor_range[cand['widen_factor_neck_idx'][i]])
+        widen_factor_neck_out = self.widen_factor_range[cand['widen_factor_neck_out_idx']]
+
         arch = {
-            'widen_factor': tuple(widen_factor),
-            'deepen_factor': tuple(deepen_factor)
+            'widen_factor_backbone': tuple(widen_factor_backbone),
+            'deepen_factor_backbone': tuple(deepen_factor_backbone),
+            'widen_factor_neck': tuple(widen_factor_neck),
+            'widen_factor_neck_out': tuple(widen_factor_neck_out),
         }
         return arch
 
@@ -147,18 +154,23 @@ class EvolutionSearcher(object):
     def get_param(self, cand):
 
         arch = self.idx_to_arch(cand)
-        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_searchable.py')
+        # cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_searchable.py')
+        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc.py')
 
         if args.cfg_options is not None:
             cfg.merge_from_dict(args.cfg_options)
 
-        cfg.model.backbone.deepen_factor = arch['deepen_factor']
-        cfg.model.backbone.widen_factor = arch['widen_factor']
+        # cfg.model.backbone.deepen_factor = arch['deepen_factor']
+        cfg.model.backbone.widen_factor = arch['widen_factor_backbone']
 
         in_channels = [256, 512, 1024]
         for i in range(len(in_channels)):
-            in_channels[i] = int(in_channels[i] * arch['widen_factor'][i + 2])
+            in_channels[i] = int(in_channels[i] * arch['widen_factor_backbone'][i + 2])
         cfg.model.neck.in_channels = in_channels
+
+        cfg.model.neck.widen_factor = arch['widen_factor_neck']
+        cfg.model.neck.widen_factor_out = arch['widen_factor_neck_out']
+        cfg.model.bbox_head.widen_factor_neck = arch['widen_factor_neck_out']
 
         model = build_detector(
             cfg.model, train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg'))
@@ -289,8 +301,10 @@ class EvolutionSearcher(object):
         #             })
         cand_iter = self.stack_random_cand(
             lambda: {
-                'widen_factor_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(5)]),
-                'deepen_factor_idx': tuple([np.random.randint(0, len(self.deepen_factor_range)) for i in range(4)])
+                'widen_factor_backbone_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(5)]),
+                'deepen_factor_backbone_idx': tuple([np.random.randint(0, len(self.deepen_factor_range)) for i in range(4)]),
+                'widen_factor_neck_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(8)]),
+                'widen_factor_neck_out_idx': np.random.randint(0, len(self.widen_factor_range)),
             })
         while len(self.candidates) < num: # 候选子网少于population num
             cand = next(cand_iter) # 再生成一个arch
@@ -334,7 +348,11 @@ class EvolutionSearcher(object):
             for i in range(4):
                 if np.random.random_sample() < m_prob:
                     cand[i + 5] = np.random.randint(0, len(self.deepen_factor_range))
-
+            for i in range(8):
+                if np.random.random_sample() < m_prob:
+                    cand[i + 9] = np.random.randint(0, len(self.widen_factor_range))
+            if np.random.random_sample() < m_prob:
+                cand[17] = np.random.randint(0, len(self.widen_factor_range))
             return tuple(cand)
 
         cand_iter = self.stack_random_cand(random_func) # 根据mutation函数，随机生成结构
