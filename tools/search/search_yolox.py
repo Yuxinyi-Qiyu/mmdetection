@@ -128,9 +128,9 @@ class EvolutionSearcher(object):
         widen_factor_backbone = []
         for i in range(len(cand['widen_factor_backbone_idx'])):  # !!!here 修改cand传递形式，可能是因为broad cast无法传递0。33
             widen_factor_backbone.append(self.widen_factor_range[cand['widen_factor_backbone_idx'][i]])
-        deepen_factor_backbone = []
-        for i in range(len(cand['deepen_factor_backbone_idx'])):
-            deepen_factor_backbone.append(self.deepen_factor_range[cand['deepen_factor_backbone_idx'][i]])
+        deepen_factor = []
+        for i in range(len(cand['deepen_factor_idx'])):
+            deepen_factor.append(self.deepen_factor_range[cand['deepen_factor_idx'][i]])
         widen_factor_neck = []
         for i in range(len(cand['widen_factor_neck_idx'])):
             widen_factor_neck.append(self.widen_factor_range[cand['widen_factor_neck_idx'][i]])
@@ -138,9 +138,9 @@ class EvolutionSearcher(object):
 
         arch = {
             'widen_factor_backbone': tuple(widen_factor_backbone),
-            'deepen_factor_backbone': tuple(deepen_factor_backbone),
+            'deepen_factor': tuple(deepen_factor),
             'widen_factor_neck': tuple(widen_factor_neck),
-            'widen_factor_neck_out': tuple(widen_factor_neck_out),
+            'widen_factor_neck_out': widen_factor_neck_out,
         }
         return arch
 
@@ -302,7 +302,7 @@ class EvolutionSearcher(object):
         cand_iter = self.stack_random_cand(
             lambda: {
                 'widen_factor_backbone_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(5)]),
-                'deepen_factor_backbone_idx': tuple([np.random.randint(0, len(self.deepen_factor_range)) for i in range(4)]),
+                'deepen_factor_idx': tuple([np.random.randint(0, len(self.deepen_factor_range)) for i in range(4)]),
                 'widen_factor_neck_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(8)]),
                 'widen_factor_neck_out_idx': np.random.randint(0, len(self.widen_factor_range)),
             })
@@ -364,7 +364,7 @@ class EvolutionSearcher(object):
             cand_tuple = get_broadcast_cand(cand_tuple, self.distributed, rank)
             cand = tuple_to_dict(cand_tuple)
             cand = get_broadcast_cand(cand, self.distributed, rank)
-
+            print(cand)
             if not self.is_legal(cand):
                 continue
             res.append(cand_tuple)

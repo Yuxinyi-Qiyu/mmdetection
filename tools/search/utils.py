@@ -173,8 +173,10 @@ def dict_to_tuple(arch):
 
 
 def tuple_to_dict(cand_tuple):
-    arch = {'widen_factor_idx': cand_tuple[:5],
-            'deepen_factor_idx': cand_tuple[5:]
+    arch = {'widen_factor_backbone_idx': cand_tuple[:5],
+            'deepen_factor_idx': cand_tuple[5:9],
+            'widen_factor_neck_idx': cand_tuple[9:17],
+            'widen_factor_neck_out_idx': cand_tuple[17],
             }
     return arch
 
