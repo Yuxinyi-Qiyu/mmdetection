@@ -55,7 +55,10 @@ class YOLOXPAFPN_Searchable(BaseModule):
         self.widen_factor_out = widen_factor_out
         self.in_channels = in_channels
         self.out_channels = out_channels
+        
         conv = DepthwiseSeparableConvModule if use_depthwise else ConvModule
+
+        # build top-down blocks
         self.upsample = nn.Upsample(**upsample_cfg)
         self.reduce_layers = nn.ModuleList()
         self.top_down_blocks = nn.ModuleList()

@@ -59,7 +59,7 @@ model = dict(
         type='CSPDarknet_Searchable',
         conv_cfg=dict(type='USConv2d'),
         # norm_cfg=dict(type='BN', momentum=0.03, eps=0.001),
-        norm_cfg=dict(type='USBN2d'), # dict(type='BN', momentum=0.03, eps=0.001),
+        norm_cfg=dict(type='USBN2d', momentum=0.03, eps=0.001), # dict(type='BN', momentum=0.03, eps=0.001),
         deepen_factor=deepen_factor,
         widen_factor=widen_factor_backbone),
     neck=dict(

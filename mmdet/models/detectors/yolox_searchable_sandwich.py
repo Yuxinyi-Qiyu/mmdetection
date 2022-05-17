@@ -154,7 +154,9 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
             if self.search_backbone or self.search_neck:
                 self.set_arch(arch)
 
-            x = self.extract_feat(img)
+            # x = self.extract_feat(img)
+            x = self.backbone(img)
+            x = self.neck(x)
 
             if len(self.archs) > 1 and self.inplace: # inplace distill
                 if idx == 0: # 最大的子网

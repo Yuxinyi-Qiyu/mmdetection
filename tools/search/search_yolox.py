@@ -48,8 +48,8 @@ class EvolutionSearcher(object):
         # self.max_epochs = 5 # 20
         self.select_num = args.select_num # 10
         # self.select_num = 2 # 10
-        self.population_num = args.population_num # 50
-        # self.population_num = 4
+        # self.population_num = args.population_num # 50
+        self.population_num = 4
         self.m_prob = args.m_prob # 0.1
         self.crossover_num = args.crossover_num # 25
         # self.crossover_num = 2

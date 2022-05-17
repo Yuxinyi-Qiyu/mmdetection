@@ -288,10 +288,10 @@ class EvolutionSearcher1(object):
         #         'deepen_factor': (0.33, 0.33, 0.33, 0.33),
         #         'widen_factor_neck':(0.5, 0.125, 0.125, 0.375, 0.375, 0.25, 0.25, 0.25),
         #         'widen_factor_neck_out':0.375}
-        cand = {'widen_factor_backbone': (0.25, 0.5, 0.5, 0.375, 0.25),
+        cand = {'widen_factor_backbone': (0.375, 0.125, 0.125, 0.5, 0.5),
                 'deepen_factor': (0.33, 0.33, 0.33, 0.33),
-                'widen_factor_neck':(0.25, 0.375, 0.5, 0.375, 0.375, 0.25, 0.125, 0.375),
-                'widen_factor_neck_out':0.375}
+                'widen_factor_neck':(0.125, 0.5, 0.25, 0.5, 0.375, 0.125, 0.25, 0.5),
+                'widen_factor_neck_out':0.5}
         map = self.is_legal(cand)
         print("cand:" + str(cand))
         print("map:" + str(map))
