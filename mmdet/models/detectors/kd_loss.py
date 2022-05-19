@@ -8,7 +8,7 @@ from .two_stage import TwoStageDetector
 from einops import rearrange, reduce
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from ..backbones.usconv import sepc_conv, USsepc_conv, USConv2d, USLinear
+from ..utils import USConv2d, USBatchNorm2d
 
 class Norm(nn.Module):
     def __init__(self):

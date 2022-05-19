@@ -18,7 +18,7 @@ from .dense_test_mixins import BBoxTestMixin
 
 # import sys
 # sys.path.append("../backbone/")
-from ..backbones import USConv2d
+from ..utils import USConv2d, USBatchNorm2d
 
 
 @HEADS.register_module()

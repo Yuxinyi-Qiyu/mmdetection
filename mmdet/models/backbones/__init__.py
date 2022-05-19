@@ -17,12 +17,11 @@ from .swin import SwinTransformer
 from .trident_resnet import TridentResNet
 from .csp_darknet_searchable import CSPDarknet_Searchable
 from .csp_darknet_tfs import CSPDarknet_tfs
-from .usconv import USConv2d
 
 __all__ = [
     'RegNet', 'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet',
     'MobileNetV2', 'Res2Net', 'HourglassNet', 'DetectoRS_ResNet',
     'DetectoRS_ResNeXt', 'Darknet', 'ResNeSt', 'TridentResNet', 'CSPDarknet',
     'SwinTransformer', 'PyramidVisionTransformer', 'PyramidVisionTransformerV2',
-    'CSPDarknet_Searchable', 'CSPDarknet_tfs', 'USConv2d'
+    'CSPDarknet_Searchable', 'CSPDarknet_tfs'
 ]

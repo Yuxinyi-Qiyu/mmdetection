@@ -59,7 +59,7 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
                  search_head=False,
                  sandwich=False,
                  inplace=False, # distill
-                 kd_weight=1e-8,
+                 kd_weight=1e-8, # 1e-3
                  ):
         super(YOLOX_Searchable_Sandwich, self).__init__(
             backbone,

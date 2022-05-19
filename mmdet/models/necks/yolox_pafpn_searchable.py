@@ -8,6 +8,7 @@ from mmcv.runner import BaseModule
 
 from ..builder import NECKS
 from ..utils import CSPLayer
+from ..utils import USConv2d, USBatchNorm2d
 
 
 @NECKS.register_module("YOLOXPAFPN_Searchable")

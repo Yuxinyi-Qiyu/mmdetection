@@ -8,7 +8,7 @@ from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from ..builder import BACKBONES
-from .usconv import sepc_conv, USsepc_conv, USConv2d, USLinear, USBatchNorm2d
+from ..utils import USConv2d, USBatchNorm2d
 from ..utils import CSPLayer
 
 

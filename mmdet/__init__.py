@@ -1,6 +1,8 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
-
+from .models import *
+from .datasets import *
+from .apis import *
 from .version import __version__, short_version
 
 
