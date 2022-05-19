@@ -68,16 +68,27 @@ class YOLOXPAFPN_Searchable(BaseModule):
         self.new_out_channel = new_out_channel
 
         self.base_channels_backbone = [256, 512, 1024]
+        # self.base_channels_dict = {
+        #     'reduce_layers0':512,
+        #     'reduce_layers1':512,
+        #     'top_down_blocks0':256,
+        #     'top_down_blocks1':256,
+        #     'downsamples0':256,
+        #     'downsamples1':512,
+        #     'bottom_up_blocks0':512,
+        #     'bottom_up_blocks1':1024
+        # }
         self.base_channels_dict = {
-            'reduce_layers0':512,
-            'reduce_layers1':512,
-            'top_down_blocks0':256,
-            'top_down_blocks1':256,
-            'downsamples0':256,
-            'downsamples1':512,
-            'bottom_up_blocks0':512,
-            'bottom_up_blocks1':1024
+            'reduce_layers0': 512,
+            'reduce_layers1': 256,
+            'top_down_blocks0': 512,
+            'top_down_blocks1': 256,
+            'downsamples0': 256,
+            'downsamples1': 512,
+            'bottom_up_blocks0': 512,
+            'bottom_up_blocks1': 1024
         }
+
         # create factor_dictionary
         self.widen_factor_dict = {
             'reduce_layers0':widen_factor[0],
@@ -204,6 +215,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
             'bottom_up_blocks0':widen_factor[6],
             'bottom_up_blocks1':widen_factor[7],
         }
+
         channels_out_dict = {
             'reduce_layers0':int(self.widen_factor_dict['reduce_layers0'] * self.base_channels_dict['reduce_layers0']),
             'reduce_layers1': int(self.widen_factor_dict['reduce_layers1'] * self.base_channels_dict['reduce_layers1']),

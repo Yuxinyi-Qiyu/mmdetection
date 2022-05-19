@@ -1,7 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import math
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,7 +18,7 @@ from .dense_test_mixins import BBoxTestMixin
 
 
 @HEADS.register_module()
-class YOLOXHead(BaseDenseHead, BBoxTestMixin):
+class YOLOXHead_tfs(BaseDenseHead, BBoxTestMixin):
     """YOLOXHead head used in `YOLOX <https://arxiv.org/abs/2107.08430>`_.
 
     Args:
@@ -53,6 +52,7 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
     def __init__(self,
                  num_classes,
                  in_channels,
+                 widen_factor_neck=1.0,
                  feat_channels=256,
                  stacked_convs=2,
                  strides=[8, 16, 32],
@@ -92,7 +92,9 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
         super().__init__(init_cfg=init_cfg)
         self.num_classes = num_classes
         self.cls_out_channels = num_classes
-        self.in_channels = in_channels
+        self.widen_factor_neck = widen_factor_neck
+        self.base_channel = 256
+        self.in_channels = int(self.base_channel * widen_factor_neck)
         self.feat_channels = feat_channels
         self.stacked_convs = stacked_convs
         self.strides = strides
@@ -174,7 +176,7 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
         return conv_cls, conv_reg, conv_obj
 
     def init_weights(self):
-        super(YOLOXHead, self).init_weights()
+        super(YOLOXHead_tfs, self).init_weights()
         # Use prior in model initialization to improve stability
         bias_init = bias_init_with_prob(0.01)
         for conv_cls, conv_obj in zip(self.multi_level_conv_cls,
@@ -213,7 +215,6 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
                            self.multi_level_conv_reg,
                            self.multi_level_conv_obj)
 
-    @force_fp32(apply_to=('cls_scores', 'bbox_preds', 'objectnesses'))
     def get_bboxes(self,
                    cls_scores,
                    bbox_preds,
@@ -250,8 +251,7 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
         """
         assert len(cls_scores) == len(bbox_preds) == len(objectnesses)
         cfg = self.test_cfg if cfg is None else cfg
-        scale_factors = np.array(
-            [img_meta['scale_factor'] for img_meta in img_metas])
+        scale_factors = [img_meta['scale_factor'] for img_meta in img_metas]
 
         num_imgs = len(img_metas)
         featmap_sizes = [cls_score.shape[2:] for cls_score in cls_scores]

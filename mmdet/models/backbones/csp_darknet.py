@@ -177,7 +177,7 @@ class CSPDarknet(BaseModule):
     def __init__(self,
                  arch='P5',
                  deepen_factor=1.0,
-                 widen_factor=[1.0, 1.0, 1.0, 1.0, 1.0],
+                 widen_factor=1.0,
                  out_indices=(2, 3, 4),
                  frozen_stages=-1,
                  use_depthwise=False,
@@ -213,7 +213,7 @@ class CSPDarknet(BaseModule):
 
         self.stem = Focus(
             3,
-            int(arch_setting[0][0] * widen_factor[0]),
+            int(arch_setting[0][0] * widen_factor),
             kernel_size=3,
             conv_cfg=conv_cfg,
             norm_cfg=norm_cfg,
@@ -222,8 +222,8 @@ class CSPDarknet(BaseModule):
 
         for i, (in_channels, out_channels, num_blocks, add_identity,
                 use_spp) in enumerate(arch_setting):
-            in_channels = int(in_channels * widen_factor[i])
-            out_channels = int(out_channels * widen_factor[i + 1])
+            in_channels = int(in_channels * widen_factor)
+            out_channels = int(out_channels * widen_factor)
             num_blocks = max(round(num_blocks * deepen_factor), 1)
             stage = []
             conv_layer = conv(
@@ -257,12 +257,6 @@ class CSPDarknet(BaseModule):
             stage.append(csp_layer)
             self.add_module(f'stage{i + 1}', nn.Sequential(*stage))
             self.layers.append(f'stage{i + 1}')
-
-            # print('model')
-            # for i, layer_name in enumerate(self.layers):
-            #     layer = getattr(self, layer_name)
-            #     print(layer_name)
-            #     print(layer)
 
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
