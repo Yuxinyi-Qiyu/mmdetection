@@ -287,7 +287,12 @@ class CSPDarknet_Searchable(BaseModule):
                     m.eval()
 
     def forward(self, x):
-        # print('train backbone')
+        # print(self.layers)
+        # print('backbone_model')
+        # for i, layer_name in enumerate(self.layers):
+        #     layer = getattr(self, layer_name)
+        #     print(layer_name)
+        #     print(layer)
         outs = []
         arch_setting = self.arch_settings['P5']
         stage = 0
@@ -303,10 +308,7 @@ class CSPDarknet_Searchable(BaseModule):
             _, _, num_blocks, add_identity, use_spp = arch_setting[stage]
 
             # conv
-            # print("layer[0]")
-            # print(layer)
             x = layer[0](x)
-            # print("fin!")
 
             # spp
             use_spp_x = 1 if use_spp else 0
@@ -315,8 +317,7 @@ class CSPDarknet_Searchable(BaseModule):
 
             # csp layer todo:如何直接调用csp layer的forward函数
             num_blocks = max(round(num_blocks * self.deepen_factor[i - 1]), 1)
-            # print("num_blocks"+str(num_blocks))
-            x_short = layer[1 + use_spp_x].short_conv(x) # todo name
+            x_short = layer[1 + use_spp_x].short_conv(x)
             x_main = layer[1 + use_spp_x].main_conv(x)
 
             darknetbottleneck = layer[1 + use_spp_x].blocks  # Sequential
@@ -327,6 +328,7 @@ class CSPDarknet_Searchable(BaseModule):
 
                 if add_identity:  # 是否有shorcut
                     out = out + identity
+                x_main = out # 之前没加！
 
             x = torch.cat((x_main, x_short), dim=1)
             x = layer[1 + use_spp_x].final_conv(x)
@@ -352,10 +354,8 @@ class CSPDarknet_Searchable(BaseModule):
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
             if layer_name == "stem":
-                channel = int(arch_setting[0][0] * widen_factor[0] // 16 * 16)
-                # todo
-                if channel == 0:
-                    channel = 16
+                channel = int(arch_setting[0][0] * widen_factor[0])
+
                 layer.conv.conv.out_channels = channel
                 layer.conv.bn.num_features = channel
                 continue
@@ -363,13 +363,9 @@ class CSPDarknet_Searchable(BaseModule):
             in_channels, out_channels, num_blocks, _, use_spp = arch_setting[i - 1] # todo 改成从arch setting里取出in/out channel * widen——factor
             num_blocks = max(round(num_blocks * deepen_factor[i - 1]), 1) # deepfactor
             use_spp_x = 1 if use_spp else 0
-            in_channel = int(in_channels * widen_factor[i - 1] // 16 * 16)
-            out_channel = int(out_channels * widen_factor[i] // 16 * 16)
-            # todo 太丑了
-            if in_channel == 0:
-                in_channel = 16
-            if out_channel == 0:
-                out_channel = 16
+            in_channel = int(in_channels * widen_factor[i - 1])
+            out_channel = int(out_channels * widen_factor[i])
+
             # convmodule
             # in_channel = base_channel * factor[i - 1]
             # out_channel = base_channel * factor[i]
