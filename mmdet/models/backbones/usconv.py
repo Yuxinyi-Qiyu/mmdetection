@@ -262,20 +262,18 @@ class USBatchNorm2d(nn.BatchNorm2d):
                  affine=True,
                  group=None,
                  stats_mode='default',
-                 fea_range=[64, 384]):
+                 fea_range=[64, 384],
+                 bn_training_mode=True,
+                 ):
         super(USBatchNorm2d, self).__init__(
             num_features=num_features, affine=True, eps=0.001, momentum=0.03)
 
-        # self.bn = nn.BatchNorm2d(self.num_features_max, affine=False)
         self.training = True
+        self.bn_training_mode = bn_training_mode
 
     def forward(self, input):
         weight = self.weight
         bias = self.bias
-        # print("input.size()")
-        # print(input.size())
-        # print("self.num_features")
-        # print(self.num_features)
 
         y = nn.functional.batch_norm(
             input,
@@ -287,8 +285,13 @@ class USBatchNorm2d(nn.BatchNorm2d):
             self.momentum,
             self.eps)
 
+
         return y
 
+    def train(self, mode=True):
+        super(USBatchNorm2d, self).train(mode)
+        if not mode and self.bn_training_mode:
+            self.training = True
 
 class USLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True):

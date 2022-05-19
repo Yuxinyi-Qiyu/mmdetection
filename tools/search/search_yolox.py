@@ -21,7 +21,7 @@ from mmdet.apis import init_random_seed, set_random_seed, train_detector
 
 from utils import get_broadcast_cand, dict_to_tuple, tuple_to_dict, get_test_data, check_cand
 from trainer import parse_args, get_train_data, train_model, get_model, get_cfg
-from tester import get_cand_map, forward_model
+from tester import get_cand_map, get_cand_map_new, forward_model
 import time
 import logging
 import numpy as np
@@ -155,7 +155,7 @@ class EvolutionSearcher(object):
 
         arch = self.idx_to_arch(cand)
         # cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_searchable.py')
-        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc.py')
+        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_tfs.py')
 
         if args.cfg_options is not None:
             cfg.merge_from_dict(args.cfg_options)
@@ -226,7 +226,7 @@ class EvolutionSearcher(object):
         self.model.set_arch(self.idx_to_arch(arch)) # 这里set_ARCH,修改了模型参数
 
         # 获得当前模型的map
-        map = get_cand_map(self.model,
+        map = get_cand_map_new(self.model,
                            self.args,
                            self.distributed,
                            self.cfg,
