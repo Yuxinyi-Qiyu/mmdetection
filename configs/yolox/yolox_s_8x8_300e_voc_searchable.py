@@ -10,8 +10,9 @@ checkpoint_config = dict(interval=50)
 widen_factor_range = [0.125, 0.25, 0.375, 0.5]
 widen_factor_backbone = [0.5, 0.5, 0.5, 0.5, 0.5] # 每个stage的factor,最后一个表示stage4的outchannel
 # widen_factor_backbone = [0.375, 0.375, 0.375, 0.375, 0.375]
-deepen_factor_range = [0.33]
-deepen_factor = [0.33, 0.33, 0.33, 0.33]
+deepen_factor_range = [0.33, 0.67, 1.0]
+# deepen_factor = [0.33, 0.33, 0.33, 0.33]
+deepen_factor = [1.0, 1.0, 1.0, 1.0]
 widen_factor_neck = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
 # widen_factor_neck = [0.375, 0.375, 0.375, 0.375, 0.375, 0.375, 0.375, 0.375]
 widen_factor_neck_out = 0.5

@@ -7,4 +7,4 @@ PORT=${PORT:-29501}
 
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 python -m torch.distributed.launch --nproc_per_node=$GPUS --master_port=$PORT \
-    $(dirname "$0")/search_yolox.py $CONFIG $CHECKPOINT --launcher pytorch ${@:4}
+    $(dirname "$0")/search_yolox_target_params.py $CONFIG $CHECKPOINT --launcher pytorch ${@:4}

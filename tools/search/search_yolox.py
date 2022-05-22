@@ -30,6 +30,13 @@ import functools
 import random
 import copy
 
+from torch import nn
+from thop.vision.basic_hooks import count_parameters
+from thop.profile import prRed, register_hooks
+from mmdet.models import build_detector
+from mmdet.models.utils.usconv import USConv2d, USBatchNorm2d, \
+    count_usconvNd_flops, count_usconvNd_params, count_usbn_flops, count_usbn_params
+
 try:
     from mmcv.cnn import get_model_complexity_info
 except ImportError:
@@ -40,6 +47,90 @@ np.random.seed(0)
 random.seed(0)
 torch.backends.cudnn.deterministic = True
 
+def profile(model: nn.Module, inputs, custom_ops=None, verbose=True):
+    handler_collection = {}
+    types_collection = set()
+    if custom_ops is None:
+        custom_ops = {}
+
+    def add_hooks(m: nn.Module):
+        m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64))
+        m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64))
+
+        m_type = type(m)
+
+        fn = None
+        params_fn = count_parameters
+        if m_type in custom_ops:  # if defined both op maps, use custom_ops to overwrite.
+            fn = custom_ops[m_type]
+            if len(fn) == 2:
+                fn, params_fn = fn
+            if m_type not in types_collection and verbose:
+                print("[INFO] Customize rule %s() %s." % (fn.__qualname__, m_type))
+        elif m_type in register_hooks:
+            fn = register_hooks[m_type]
+            if m_type not in types_collection and verbose:
+                print("[INFO] Register %s() for %s." % (fn.__qualname__, m_type))
+        else:
+            if m_type not in types_collection and verbose:
+                prRed("[WARN] Cannot find rule for %s. Treat it as zero Macs and zero Params." % m_type)
+
+        if fn is not None:
+            handler_collection[m] = (m.register_forward_hook(fn), m.register_forward_hook(params_fn))
+        types_collection.add(m_type)
+
+    prev_training_status = model.training
+
+    model.eval()
+    model.apply(add_hooks)
+
+    with torch.no_grad():
+        model(*inputs)
+
+    def dfs_count(module: nn.Module, prefix="\t") -> (int, int):
+        total_ops, total_params = 0, 0
+        for m in module.children():
+            # if not hasattr(m, "total_ops") and not hasattr(m, "total_params"):  # and len(list(m.children())) > 0:
+            #     m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
+            # else:
+            #     m_ops, m_params = m.total_ops, m.total_params
+            if m in handler_collection and not isinstance(m, (nn.Sequential, nn.ModuleList)):
+                m_ops, m_params = m.total_ops.item(), m.total_params.item()
+            else:
+                m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
+            total_ops += m_ops
+            total_params += m_params
+        #  print(prefix, module._get_name(), (total_ops.item(), total_params.item()))
+        return total_ops, total_params
+
+    total_ops, total_params = dfs_count(model)
+
+    # reset model to original status
+    model.train(prev_training_status)
+    for m, (op_handler, params_handler) in handler_collection.items():
+        op_handler.remove()
+        params_handler.remove()
+        m._buffers.pop("total_ops")
+        m._buffers.pop("total_params")
+
+    return total_ops, total_params
+
+def my_get_model_complexity_info(model, input_shape, custom_ops=None):
+    assert type(input_shape) is tuple
+    assert len(input_shape) >= 1
+    assert isinstance(model, nn.Module)
+    try:
+        batch = torch.ones(()).new_empty(
+            (1, *input_shape),
+            dtype=next(model.parameters()).dtype,
+            device=next(model.parameters()).device)
+    except StopIteration:
+        # Avoid StopIteration for models which have no parameters,
+        # like `nn.Relu()`, `nn.AvgPool2d`, etc.
+        batch = torch.ones(()).new_empty((1, *input_shape))
+    flops_count, params_count = profile(model, (batch,), verbose=False, custom_ops=custom_ops)
+    return flops_count, params_count
+
 class EvolutionSearcher(object):
 
     def __init__(self, args):
@@ -48,8 +139,8 @@ class EvolutionSearcher(object):
         # self.max_epochs = 5 # 20
         self.select_num = args.select_num # 10
         # self.select_num = 2 # 10
-        # self.population_num = args.population_num # 50
-        self.population_num = 4
+        self.population_num = args.population_num # 50
+        # self.population_num = 4
         self.m_prob = args.m_prob # 0.1
         self.crossover_num = args.crossover_num # 25
         # self.crossover_num = 2
@@ -184,7 +275,10 @@ class EvolutionSearcher(object):
             raise NotImplementedError(
                 'FLOPs counter is currently not currently supported with {}'.
                     format(model.__class__.__name__))
-        flops, params = get_model_complexity_info(model, self.input_shape, as_strings=False, print_per_layer_stat=False)
+        flops, params = my_get_model_complexity_info(model, self.input_shape,
+                                                     # as_strings=False,
+                                                     # print_per_layer_stat=False
+                                                     )
         # Warning: variables __flops__ or __params__ are already defined for the moduleMaxPool2d ptflops can affect your code!
         # todo: params可变，但是flops不变，FLOPs与卷积核通道有无关系？
         flops = round(flops / 10. ** 9, 2)
