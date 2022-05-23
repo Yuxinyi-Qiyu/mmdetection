@@ -225,18 +225,18 @@ def get_cand_map_new(model, args, distributed, cfg, train_data_loader, train_dat
     #todo：map=0？而且第一次test后不计算map？
 
     # model.eval()
-    # model.train()
+    model.train()
     if not distributed: # False
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, test_data_loader, args.show, args.show_dir,
+        model1 = MMDataParallel(model, device_ids=[0])
+        outputs = single_gpu_test(model1, test_data_loader, args.show, args.show_dir,
                                   args.show_score_thr)
     else:
-        model = MMDistributedDataParallel(
+        model1 = MMDistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False)
 
-        outputs = multi_gpu_test(model, test_data_loader, args.tmpdir,
+        outputs = multi_gpu_test(model1, test_data_loader, args.tmpdir,
                                  args.gpu_collect)
 
     rank, _ = get_dist_info() # rank = 0

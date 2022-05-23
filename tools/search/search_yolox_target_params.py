@@ -43,8 +43,6 @@ except ImportError:
     raise ImportError('Please upgrade mmcv to >0.6.2')
 torch.manual_seed(0)
 torch.cuda.manual_seed_all(0)
-np.random.seed(0)
-random.seed(0)
 torch.backends.cudnn.deterministic = True
 
 def profile(model: nn.Module, inputs, custom_ops=None, verbose=True):
@@ -146,7 +144,7 @@ class EvolutionSearcher(object):
         # self.crossover_num = 2
         self.mutation_num = args.mutation_num # 25
         # self.mutation_num = 2
-        self.map_limit = 0.738 # "tiny_map" #明天测
+        self.map_limit = 0.741 # "tiny_map" # 0.764
         self.flops_limit = args.flops_limit # None (float) # 17.651 M 122.988 GFLOPS
         self.params_limit = args.params_limit
         self.input_shape = (3,) + tuple(args.shape) # default=[1280, 800]  [3,1280,800] todo?
@@ -314,12 +312,7 @@ class EvolutionSearcher(object):
             del size, fp, cfg
             return False
 
-        info['fp'] = fp
-        info['size'] = size
-        info['cfg'] = cfg
-        del size, fp, cfg
         self.model.set_arch(self.idx_to_arch(arch)) # 这里set_ARCH,修改了模型参数
-
         # 获得当前模型的map
         map = get_cand_map_new(self.model,
                            self.args,
@@ -333,7 +326,6 @@ class EvolutionSearcher(object):
         # map = []
         # map.append(round(random.uniform(0, 1),2))
         # map = tuple(map)
-
         if not isinstance(map, tuple):
             if self.args.eval[0] == "bbox":
                 map = tuple([0.] * 6)
@@ -341,19 +333,22 @@ class EvolutionSearcher(object):
                 map = tuple([0.])
         if not map:
             map = tuple([0.] * 6)
+        map = get_broadcast_cand(map, self.distributed, rank)
+        torch.cuda.empty_cache()
 
         if self.map_limit and map[0] < self.map_limit: # map约束筛选
             del map
             return False
 
-        map = get_broadcast_cand(map, self.distributed, rank)
-        torch.cuda.empty_cache()
 
         if map:
+            info['fp'] = fp
+            info['size'] = size
+            info['cfg'] = cfg
             info['map'] = map[0]
             info['map_list'] = map
             info['visited'] = True # 标记
-            del map
+            del size, fp, cfg, map
             if rank == 0:
                 print("self.vis_dict")
                 print(self.vis_dict)

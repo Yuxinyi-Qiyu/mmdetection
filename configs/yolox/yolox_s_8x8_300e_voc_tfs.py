@@ -5,8 +5,6 @@ _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 # ( 1, 1, 3, 3, 3, 2, 3, 2, 0)
 # [0.125, 0.375, 0.375, 0.25, 0.375]
 # [0.25, 0.25, 0.5, 0.5, 0.5, 0.375, 0.5, 0.25]
-# (0, 2, 2, 1, 2, 0, 0, 0, 0, 1, 0, 3, 3, 2, 3, 3, 2, 0)
-
 
 img_scale = (640, 640)
 checkpoint_config = dict(interval=50)
@@ -17,20 +15,20 @@ model = dict(
     random_size_range=(15, 25),
     random_size_interval=10,
     backbone=dict(type='CSPDarknet_tfs', deepen_factor=0.33,
-                  widen_factor= [0.25, 0.125, 0.5, 0.125, 0.125]),
+                  widen_factor= [0.125, 0.5, 0.375, 0.375, 0.25]),
     neck=dict(
         type='YOLOXPAFPN_tfs',
-        in_channels=[128, 64, 128],
-        out_channels=32,
-        widen_factor=[0.375, 0.25, 0.125, 0.25, 0.5, 0.375, 0.25, 0.125],
-        widen_factor_out=0.125,
+        in_channels=[96, 192, 256],
+        out_channels=64,
+        widen_factor=[0.125, 0.125, 0.25, 0.375, 0.25, 0.375, 0.125, 0.125],
+        widen_factor_out=0.25,
         num_csp_blocks=1),
     bbox_head=dict(
         type='YOLOXHead_tfs',
         num_classes=20,
-        in_channels=32,
-        widen_factor_neck=0.125,
-        feat_channels=32),
+        in_channels=64,
+        widen_factor_neck=0.25,
+        feat_channels=64),
     train_cfg=dict(assigner=dict(type='SimOTAAssigner', center_radius=2.5)),
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
@@ -104,7 +102,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=16,
+    samples_per_gpu=32,
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,

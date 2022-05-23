@@ -20,14 +20,22 @@ from mmdet.models import build_detector
 from mmdet.apis import init_random_seed, set_random_seed, train_detector
 
 from utils import get_broadcast_cand, dict_to_tuple, tuple_to_dict, get_test_data, check_cand
-from trainer import parse_args,get_train_data, train_model, get_model, get_cfg
-from tester import get_cand_map, forward_model
+from trainer import parse_args, get_train_data, train_model, get_model, get_cfg
+from tester import get_cand_map, get_cand_map_new, forward_model
 import time
 import logging
 import numpy as np
 from random import choice
 import functools
 import random
+import copy
+
+from torch import nn
+from thop.vision.basic_hooks import count_parameters
+from thop.profile import prRed, register_hooks
+from mmdet.models import build_detector
+from mmdet.models.utils.usconv import USConv2d, USBatchNorm2d, \
+    count_usconvNd_flops, count_usconvNd_params, count_usbn_flops, count_usbn_params
 
 try:
     from mmcv.cnn import get_model_complexity_info
@@ -39,139 +47,119 @@ np.random.seed(0)
 random.seed(0)
 torch.backends.cudnn.deterministic = True
 
+def profile(model: nn.Module, inputs, custom_ops=None, verbose=True):
+    handler_collection = {}
+    types_collection = set()
+    if custom_ops is None:
+        custom_ops = {}
 
-# torch.backends.cudnn.enabled = True
-# torch.backends.cudnn.benchmark = True
-# def parse_args():
-#     parser = argparse.ArgumentParser(
-#         description='MMDet test (and eval) a model')
-#     parser.add_argument('config', help='test config file path')
-#     parser.add_argument('checkpoint', help='checkpoint file')
-#     parser.add_argument(
-#         '--work-dir',
-#         help='the directory to save the file containing evaluation metrics')
-#     parser.add_argument('--out', help='output result file in pickle format')
-#     parser.add_argument(
-#         '--fuse-conv-bn',
-#         action='store_true',
-#         help='Whether to fuse conv and bn, this will slightly increase'
-#         'the inference speed')
-#     parser.add_argument(
-#         '--gpu-ids',
-#         type=int,
-#         nargs='+',
-#         help='(Deprecated, please use --gpu-id) ids of gpus to use '
-#         '(only applicable to non-distributed training)')
-#     parser.add_argument(
-#         '--gpu-id',
-#         type=int,
-#         default=0,
-#         help='id of gpu to use '
-#         '(only applicable to non-distributed testing)')
-#     parser.add_argument(
-#         '--format-only',
-#         action='store_true',
-#         help='Format the output results without perform evaluation. It is'
-#         'useful when you want to format the result to a specific format and '
-#         'submit it to the test server')
-#     parser.add_argument(
-#         '--eval',
-#         type=str,
-#         nargs='+',
-#         help='evaluation metrics, which depends on the dataset, e.g., "bbox",'
-#         ' "segm", "proposal" for COCO, and "mAP", "recall" for PASCAL VOC')
-#     parser.add_argument('--show', action='store_true', help='show results')
-#     parser.add_argument(
-#         '--show-dir', help='directory where painted images will be saved')
-#     parser.add_argument(
-#         '--show-score-thr',
-#         type=float,
-#         default=0.3,
-#         help='score threshold (default: 0.3)')
-#     parser.add_argument(
-#         '--gpu-collect',
-#         action='store_true',
-#         help='whether to use gpu to collect results.')
-#     parser.add_argument(
-#         '--tmpdir',
-#         help='tmp directory used for collecting results from multiple '
-#         'workers, available when gpu-collect is not specified')
-#     parser.add_argument(
-#         '--cfg-options',
-#         nargs='+',
-#         action=DictAction,
-#         help='override some settings in the used config, the key-value pair '
-#         'in xxx=yyy format will be merged into config file. If the value to '
-#         'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-#         'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-#         'Note that the quotation marks are necessary and that no white space '
-#         'is allowed.')
-#     parser.add_argument(
-#         '--options',
-#         nargs='+',
-#         action=DictAction,
-#         help='custom options for evaluation, the key-value pair in xxx=yyy '
-#         'format will be kwargs for dataset.evaluate() function (deprecate), '
-#         'change to --eval-options instead.')
-#     parser.add_argument(
-#         '--eval-options',
-#         nargs='+',
-#         action=DictAction,
-#         help='custom options for evaluation, the key-value pair in xxx=yyy '
-#         'format will be kwargs for dataset.evaluate() function')
-#     parser.add_argument(
-#         '--launcher',
-#         choices=['none', 'pytorch', 'slurm', 'mpi'],
-#         default='none',
-#         help='job launcher')
-#     parser.add_argument('--local_rank', type=int, default=0)
-#     args = parser.parse_args()
-#     if 'LOCAL_RANK' not in os.environ:
-#         os.environ['LOCAL_RANK'] = str(args.local_rank)
-#
-#     if args.options and args.eval_options:
-#         raise ValueError(
-#             '--options and --eval-options cannot be both '
-#             'specified, --options is deprecated in favor of --eval-options')
-#     if args.options:
-#         warnings.warn('--options is deprecated in favor of --eval-options')
-#         args.eval_options = args.options
-#     return args
+    def add_hooks(m: nn.Module):
+        m.register_buffer('total_ops', torch.zeros(1, dtype=torch.float64))
+        m.register_buffer('total_params', torch.zeros(1, dtype=torch.float64))
 
-def main():
-    args = parse_args()
+        m_type = type(m)
 
+        fn = None
+        params_fn = count_parameters
+        if m_type in custom_ops:  # if defined both op maps, use custom_ops to overwrite.
+            fn = custom_ops[m_type]
+            if len(fn) == 2:
+                fn, params_fn = fn
+            if m_type not in types_collection and verbose:
+                print("[INFO] Customize rule %s() %s." % (fn.__qualname__, m_type))
+        elif m_type in register_hooks:
+            fn = register_hooks[m_type]
+            if m_type not in types_collection and verbose:
+                print("[INFO] Register %s() for %s." % (fn.__qualname__, m_type))
+        else:
+            if m_type not in types_collection and verbose:
+                prRed("[WARN] Cannot find rule for %s. Treat it as zero Macs and zero Params." % m_type)
 
+        if fn is not None:
+            handler_collection[m] = (m.register_forward_hook(fn), m.register_forward_hook(params_fn))
+        types_collection.add(m_type)
 
-class EvolutionSearcher1(object):
+    prev_training_status = model.training
+
+    model.eval()
+    model.apply(add_hooks)
+
+    with torch.no_grad():
+        model(*inputs)
+
+    def dfs_count(module: nn.Module, prefix="\t") -> (int, int):
+        total_ops, total_params = 0, 0
+        for m in module.children():
+            # if not hasattr(m, "total_ops") and not hasattr(m, "total_params"):  # and len(list(m.children())) > 0:
+            #     m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
+            # else:
+            #     m_ops, m_params = m.total_ops, m.total_params
+            if m in handler_collection and not isinstance(m, (nn.Sequential, nn.ModuleList)):
+                m_ops, m_params = m.total_ops.item(), m.total_params.item()
+            else:
+                m_ops, m_params = dfs_count(m, prefix=prefix + "\t")
+            total_ops += m_ops
+            total_params += m_params
+        #  print(prefix, module._get_name(), (total_ops.item(), total_params.item()))
+        return total_ops, total_params
+
+    total_ops, total_params = dfs_count(model)
+
+    # reset model to original status
+    model.train(prev_training_status)
+    for m, (op_handler, params_handler) in handler_collection.items():
+        op_handler.remove()
+        params_handler.remove()
+        m._buffers.pop("total_ops")
+        m._buffers.pop("total_params")
+
+    return total_ops, total_params
+
+def my_get_model_complexity_info(model, input_shape, custom_ops=None):
+    assert type(input_shape) is tuple
+    assert len(input_shape) >= 1
+    assert isinstance(model, nn.Module)
+    try:
+        batch = torch.ones(()).new_empty(
+            (1, *input_shape),
+            dtype=next(model.parameters()).dtype,
+            device=next(model.parameters()).device)
+    except StopIteration:
+        # Avoid StopIteration for models which have no parameters,
+        # like `nn.Relu()`, `nn.AvgPool2d`, etc.
+        batch = torch.ones(()).new_empty((1, *input_shape))
+    flops_count, params_count = profile(model, (batch,), verbose=False, custom_ops=custom_ops)
+    return flops_count, params_count
+
+class EvolutionSearcher(object):
 
     def __init__(self, args):
         self.args = args
-        self.max_epochs = args.max_epochs  # 20
+        self.max_epochs = args.max_epochs # 20
         # self.max_epochs = 5 # 20
-        self.select_num = args.select_num  # 10
+        self.select_num = args.select_num # 10
         # self.select_num = 2 # 10
-        # self.population_num = args.population_num # 50
-        self.population_num = 4
-        self.m_prob = args.m_prob  # 0.1
-        self.crossover_num = args.crossover_num  # 25
+        self.population_num = args.population_num # 50
+        # self.population_num = 4
+        self.m_prob = args.m_prob # 0.1
+        self.crossover_num = args.crossover_num # 25
         # self.crossover_num = 2
-        self.mutation_num = args.mutation_num  # 25
+        self.mutation_num = args.mutation_num # 25
         # self.mutation_num = 2
-        self.flops_limit = args.flops_limit  # None (float) # 17.651 M 122.988 GFLOPS
+        self.map_limit = 0.738 # "tiny_map"
+        self.flops_limit = args.flops_limit # None (float) # 17.651 M 122.988 GFLOPS
         self.params_limit = args.params_limit
-        self.input_shape = (3,) + tuple(args.shape)  # default=[1280, 800]  [3,1280,800] todo?
-        self.cfg, self.meta = get_cfg(self.args)  # 获取cfg文件所有内容到meta上
+        self.input_shape = (3,) + tuple(args.shape) # default=[1280, 800]  [3,1280,800] todo?
+        self.cfg, self.meta = get_cfg(self.args) # 获取cfg文件所有内容到meta上
         self.cfg = self.cfg.copy()
 
         self.model, self.distributed = get_model(self.cfg, self.args)
-        print("after get model")
 
         # dataset
         self.train_dataset = build_dataset(self.cfg.data.train_val)
         self.train_data_loader = build_dataloader(
             self.train_dataset,
-            samples_per_gpu=self.cfg.data.samples_per_gpu,  # !
+            samples_per_gpu=self.cfg.data.samples_per_gpu, # !
             workers_per_gpu=self.cfg.data.workers_per_gpu,
             dist=self.distributed,
             shuffle=False)
@@ -182,7 +170,14 @@ class EvolutionSearcher1(object):
             workers_per_gpu=self.cfg.data.workers_per_gpu,
             dist=self.distributed,
             shuffle=False)
-        self.log_dir = '.workdir/summary'
+
+        self.widen_factor_range = self.cfg.get('widen_factor_range', None)
+        self.deepen_factor_range = self.cfg.get('deepen_factor_range', None)
+        # self.search_backbone = self.cfg.model.get('search_backbone', None)
+        # self.search_neck = self.cfg.model.get('search_neck', None)
+        # self.search_head = self.cfg.model.get('search_head', None)
+
+        self.log_dir = './summary'
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         self.checkpoint_name = os.path.join(self.log_dir, 'ea_'
@@ -190,13 +185,40 @@ class EvolutionSearcher1(object):
         loaded_checkpoint = os.path.split(args.checkpoint)[1].split('.')[0]
         times = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         # default 1600*2*4
-        print(loaded_checkpoint, self.log_dir)
-        self.logfile = os.path.join(self.log_dir, '{}_ea_dis{}_{}.log'.format(loaded_checkpoint, self.distributed,
-                                                                                 times))
+        self.logfile = os.path.join(self.log_dir, '{}_ea_dis{}_map_{}_{}.log'.format(loaded_checkpoint, self.distributed, self.map_limit, times))
 
-    def get_param(self, cand): # todo
-        arch = cand
-        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc.py')
+        self.memory = []
+        self.vis_dict = {}
+        self.keep_top_k = {self.select_num: [], 50: []}
+        self.epoch = 0
+        self.candidates = []
+
+    def idx_to_arch(self, cand): # cand: idx->factor
+        widen_factor_backbone = []
+        for i in range(len(cand['widen_factor_backbone_idx'])):  # !!!here 修改cand传递形式，可能是因为broad cast无法传递0。33
+            widen_factor_backbone.append(self.widen_factor_range[cand['widen_factor_backbone_idx'][i]])
+        deepen_factor = []
+        for i in range(len(cand['deepen_factor_idx'])):
+            deepen_factor.append(self.deepen_factor_range[cand['deepen_factor_idx'][i]])
+        widen_factor_neck = []
+        for i in range(len(cand['widen_factor_neck_idx'])):
+            widen_factor_neck.append(self.widen_factor_range[cand['widen_factor_neck_idx'][i]])
+        widen_factor_neck_out = self.widen_factor_range[cand['widen_factor_neck_out_idx']]
+
+        arch = {
+            'widen_factor_backbone': tuple(widen_factor_backbone),
+            'deepen_factor': tuple(deepen_factor),
+            'widen_factor_neck': tuple(widen_factor_neck),
+            'widen_factor_neck_out': widen_factor_neck_out,
+        }
+        return arch
+
+    def get_param(self, cand):
+
+        arch = self.idx_to_arch(cand)
+        print(arch)
+        # cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_searchable.py')
+        cfg = Config.fromfile('configs/yolox/yolox_s_8x8_300e_voc_tfs.py')
 
         if args.cfg_options is not None:
             cfg.merge_from_dict(args.cfg_options)
@@ -208,6 +230,7 @@ class EvolutionSearcher1(object):
         for i in range(len(in_channels)):
             in_channels[i] = int(in_channels[i] * arch['widen_factor_backbone'][i + 2])
         cfg.model.neck.in_channels = in_channels
+        print(in_channels)
 
         cfg.model.neck.widen_factor = arch['widen_factor_neck']
         cfg.model.neck.widen_factor_out = arch['widen_factor_neck_out']
@@ -217,7 +240,6 @@ class EvolutionSearcher1(object):
             cfg.model, train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg'))
         if torch.cuda.is_available():
             model.cuda()
-
         model.eval()
 
         if hasattr(model, 'forward_dummy'):
@@ -226,36 +248,57 @@ class EvolutionSearcher1(object):
             raise NotImplementedError(
                 'FLOPs counter is currently not currently supported with {}'.
                     format(model.__class__.__name__))
-        # flops_, params_ = get_model_complexity_info(model, self.input_shape)
-        flops, params = get_model_complexity_info(model, self.input_shape, as_strings=False, print_per_layer_stat=False) # todo：如何在这里根据深度变化改变获取复杂度的结果？
+        flops, params = my_get_model_complexity_info(model, self.input_shape,
+                                                     # as_strings=False,
+                                                     # print_per_layer_stat=False
+                                                     )
+        # Warning: variables __flops__ or __params__ are already defined for the moduleMaxPool2d ptflops can affect your code!
+        # todo: params可变，但是flops不变，FLOPs与卷积核通道有无关系？
         flops = round(flops / 10. ** 9, 2)
         params = round(params / 10 ** 6, 2)
-        print("flops,params")
-        print(flops,params)
 
         torch.cuda.empty_cache()
         del model
         return params, flops, cfg
 
     def is_legal(self, arch, **kwargs):
-        size, fp, cfg = self.get_param(arch)
+        rank, world_size = get_dist_info()
+        cand = dict_to_tuple(arch)
+        with open(self.log_dir + '_gpu_{}.txt'.format(rank), 'a') as f:
+            f.write(str(cand) + '\n')
 
-        rank, world_size = get_dist_info() # 0,1
-        cand = dict_to_tuple(arch) # (0.625, 0.5, 0.375, 0.125, 0.125, 0.33, 0.33, 1, 1)
+        if cand not in self.vis_dict: # 记录每种cand的map、model size、flops
+            self.vis_dict[cand] = {}
+        info = self.vis_dict[cand]
+        if 'visited' in info:
+            return False
+        size, fp, cfg = self.get_param(arch)  # 获得子网的参数量和flops
+        print(size, fp)
+        rank, _ = get_dist_info()
 
-        self.model.set_arch(arch, **kwargs) # 这里set_ARCH,修改了模型宽度
+        size = get_broadcast_cand(size, self.distributed, rank)
+        fp = get_broadcast_cand(fp, self.distributed, rank)
 
-        print("after model set arch")
+        info['fp'] = fp
+        info['size'] = size
+        info['cfg'] = cfg
+        del size, fp, cfg
+        self.model.set_arch(self.idx_to_arch(arch)) # 这里set_ARCH,修改了模型参数
 
-        map = get_cand_map(self.model,
+        # 获得当前模型的map
+        map = get_cand_map_new(self.model,
                            self.args,
                            self.distributed,
                            self.cfg,
                            self.train_data_loader,
                            self.train_dataset,
                            self.test_data_loader,
-                           self.test_dataset)
-        # 获得当前模型的map
+                           self.test_dataset) #  # (0.6599323749542236,)
+
+        # map = []
+        # map.append(round(random.uniform(0, 1),2))
+        # map = tuple(map)
+
         if not isinstance(map, tuple):
             if self.args.eval[0] == "bbox":
                 map = tuple([0.] * 6)
@@ -263,67 +306,50 @@ class EvolutionSearcher1(object):
                 map = tuple([0.])
         if not map:
             map = tuple([0.] * 6)
+
         map = get_broadcast_cand(map, self.distributed, rank)
         torch.cuda.empty_cache()
 
         if map:
-            return map
+            info['map'] = map[0]
+            info['map_list'] = map
+            info['visited'] = True # 标记
+            del map
+            return True
 
         return False
 
+    def get_random(self, num): # num=population_num
+        rank, _ = get_dist_info()
+        if rank == 0:
+            print('random select ........')
+        # 生成子网结构
+        print('test_tiny')
+        cand = {
+            'widen_factor_backbone_idx': tuple([2, 2, 2, 2, 2]),
+            'deepen_factor_idx': tuple([0, 0, 0, 0]),
+            'widen_factor_neck_idx': tuple([2, 2, 2, 2, 2, 2, 2, 2]),
+            'widen_factor_neck_out_idx': 2,
+        }
+        rank, world_size = get_dist_info() # 0, 1
+        cand = get_broadcast_cand(cand, self.distributed, rank)
+        cand_tuple = dict_to_tuple(cand) # cand是dict，转换成数组
+        # (0, 3, 2, 0, 0, 0, 0, 0, 0)
+        self.is_legal(cand) # 是否符合约束，不符合就重新生成子网架构
 
     def search(self):
         rank, _ = get_dist_info()
         if rank == 0:
-            print("rank==0")
-            logging.basicConfig(filename=self.logfile, level=logging.INFO)
-            print(self.logfile)
-            logging.info(self.cfg)
+            print(
+                'population_num = {} select_num = {} mutation_num = {} crossover_num = {} random_num = {} max_epochs = {}'.format(
+                    self.population_num, self.select_num, self.mutation_num, self.crossover_num,
+                    self.population_num - self.mutation_num - self.crossover_num, self.max_epochs))
 
-        # cand = {'widen_factor_backbone': (0.25, 0.25, 0.25, 0.125, 0.5),
-        #         'deepen_factor': (0.33, 0.33, 0.33, 0.33),
-        #         'widen_factor_neck':(0.125, 0.375, 0.5, 0.375, 0.25, 0.375, 0.5, 0.25),
-        #         'widen_factor_neck_out':0.25}
-        # cand = {'widen_factor_backbone': (0.375, 0.5, 0.125, 0.5, 0.25),
-        #         'deepen_factor': (0.33, 0.33, 0.33, 0.33),
-        #         'widen_factor_neck':(0.5, 0.125, 0.125, 0.375, 0.375, 0.25, 0.25, 0.25),
-        #         'widen_factor_neck_out':0.375}
-        cand = {'widen_factor_backbone': (0.375, 0.125, 0.125, 0.5, 0.5),
-                'deepen_factor': (0.33, 0.33, 0.33, 0.33),
-                'widen_factor_neck':(0.125, 0.5, 0.25, 0.5, 0.375, 0.125, 0.25, 0.5),
-                'widen_factor_neck_out':0.5}
-        map = self.is_legal(cand)
-        print("cand:" + str(cand))
-        print("map:" + str(map))
-
-        # # self.load_checkpoint()
-        # for k in [0, 1, 2, 3, 4]:
-        #     for i in [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]:
-        #         logging.info('widen: index: {}, factor:{}'.format(k, i))
-        #         l_wide = [1.0, 1.0, 1.0, 1.0, 1.0]
-        #         l_wide[k] = i
-        #         cand =  {'widen_factor': tuple(l_wide), 'deepen_factor': (1.0, 1.0, 1.0, 1.0)}
-        #         map = self.is_legal(cand)
-        #         print("cand:"+str(cand))
-        #         print("map:"+str(map))
-        #         logging.info('arch: {}, map:{}'.format(cand, map))
-        # for k in [0, 1, 2, 3]:
-        #     for i in [0.33, 1.0]:
-        #         logging.info('deepen: index: {}, factor:{}'.format(k, i))
-        #         l_deep = [1.0, 1.0, 1.0, 1.0]
-        #         l_deep[k] = i
-        #         cand =  {'widen_factor': (1.0, 1.0, 1.0, 1.0), 'deepen_factor': tuple(l_deep)}
-        #         map = self.is_legal(cand)
-        #         print("cand:"+str(cand))
-        #         print("map:"+str(map))
-        #         logging.info('arch: {}, map:{}'.format(cand, map))
-
+        self.get_random(self.population_num)
 
 
 if __name__ == '__main__':
     args = parse_args()
-    searcher = EvolutionSearcher1(args)
-    print("fin")
+    searcher = EvolutionSearcher(args)
+    print("!!!!!!!!!!!!!!")
     searcher.search()
-
-    # python tools/search/search.py 运行
