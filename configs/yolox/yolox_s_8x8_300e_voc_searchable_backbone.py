@@ -21,8 +21,8 @@ widen_factor_neck_out = 0.5
 search_backbone = True
 search_neck = False
 search_head = False
-sandwich = False
-# sandwich = True
+# sandwich = False
+sandwich = True
 inplace = 'NonLocal' # 'L2Softmax'
 img_scale = (640, 640)
 

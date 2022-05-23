@@ -5,7 +5,7 @@ _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 # ( 1, 1, 3, 3, 3, 2, 3, 2, 0)
 # [0.125, 0.375, 0.375, 0.25, 0.375]
 # [0.25, 0.25, 0.5, 0.5, 0.5, 0.375, 0.5, 0.25]
-
+# 2, 3, 1, 2, 1, 1, 0, 0, 1
 img_scale = (640, 640)
 checkpoint_config = dict(interval=50)
 # model settings
@@ -20,7 +20,7 @@ model = dict(
         type='YOLOXPAFPN_tfs',
         in_channels=[96, 192, 256],
         out_channels=64,
-        widen_factor=[0.125, 0.125, 0.25, 0.375, 0.25, 0.375, 0.125, 0.125],
+        widen_factor=[0.375, 0.5, 0.125, 0.375, 0.25, 0.375, 0.125, 0.125],
         widen_factor_out=0.25,
         num_csp_blocks=1),
     bbox_head=dict(

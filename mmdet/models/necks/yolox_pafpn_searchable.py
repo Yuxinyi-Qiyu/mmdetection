@@ -189,20 +189,25 @@ class YOLOXPAFPN_Searchable(BaseModule):
                     act_cfg=act_cfg))
 
     def set_arch(self, arch, **kwargs):
+        # print("arch")
+        # print(arch)
         widen_factor_backbone = arch['widen_factor_backbone']
         in_channels = []
         for i in range(len(self.in_channels)):
             in_channels.append(int(self.base_channels_backbone[i] * widen_factor_backbone[i + 2]))
 
-        widen_factor_out_neck = arch['widen_factor_neck_out']
-        new_out_channel = int(self.base_out_channels * widen_factor_out_neck)
-        out_channels = new_out_channel
+        if 'widen_factor_neck_out' in arch and 'widen_factor_neck' in arch:
+            widen_factor_out_neck = arch['widen_factor_neck_out']
+            out_channels = int(self.base_out_channels * widen_factor_out_neck)
+            self.new_out_channel = out_channels
+            widen_factor = arch['widen_factor_neck']
+        else:
+            widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+            out_channels = self.out_channels
 
-        self.base_out_channels = 256
-        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
-        self.new_out_channel = new_out_channel
 
-        widen_factor = arch['widen_factor_neck']
+
+
         self.widen_factor_dict = {
             'reduce_layers0': widen_factor[0],
             'reduce_layers1': widen_factor[1],
@@ -333,7 +338,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
             tuple[Tensor]: YOLOXPAFPN features.
         """
         assert len(inputs) == len(self.in_channels)
-
+        # print("top-down path")
         # top-down path
         inner_outs = [inputs[-1]]
         for idx in range(len(self.in_channels) - 1, 0, -1):
