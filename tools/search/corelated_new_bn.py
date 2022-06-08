@@ -231,7 +231,7 @@ class EvolutionSearcher(object):
             in_channels[i] = int(in_channels[i] * arch['widen_factor_backbone'][i + 2])
         cfg.model.neck.in_channels = in_channels
         print(in_channels)
-
+        #
         cfg.model.neck.widen_factor = arch['widen_factor_neck']
         cfg.model.neck.widen_factor_out = arch['widen_factor_neck_out']
         cfg.model.bbox_head.widen_factor_neck = arch['widen_factor_neck_out']
@@ -326,10 +326,10 @@ class EvolutionSearcher(object):
         # 生成子网结构
         print('test_tiny')
         cand = {
-            'widen_factor_backbone_idx': tuple([2, 2, 2, 2, 2]),
+            'widen_factor_backbone_idx': tuple([3, 3, 3, 3, 3]),
             'deepen_factor_idx': tuple([0, 0, 0, 0]),
-            'widen_factor_neck_idx': tuple([2, 2, 2, 2, 2, 2, 2, 2]),
-            'widen_factor_neck_out_idx': 2,
+            'widen_factor_neck_idx': tuple([3, 3, 3, 3, 3, 3, 3, 3]),
+            'widen_factor_neck_out_idx': 3,
         }
         rank, world_size = get_dist_info() # 0, 1
         cand = get_broadcast_cand(cand, self.distributed, rank)

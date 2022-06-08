@@ -5,7 +5,8 @@ _base_ = ['../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py']
 # ( 1, 1, 3, 3, 3, 2, 3, 2, 0)
 # [0.125, 0.375, 0.375, 0.25, 0.375]
 # [0.25, 0.25, 0.5, 0.5, 0.5, 0.375, 0.5, 0.25]
-# 2, 3, 1, 2, 1, 1, 0, 0, 1
+#
+#
 img_scale = (640, 640)
 checkpoint_config = dict(interval=50)
 # model settings
@@ -15,12 +16,12 @@ model = dict(
     random_size_range=(15, 25),
     random_size_interval=10,
     backbone=dict(type='CSPDarknet_tfs', deepen_factor=0.33,
-                  widen_factor= [0.125, 0.5, 0.375, 0.375, 0.25]),
+                  widen_factor= [0.25, 0.5, 0.5, 0.375, 0.5]),
     neck=dict(
         type='YOLOXPAFPN_tfs',
-        in_channels=[96, 192, 256],
+        in_channels=[128, 192, 512],
         out_channels=64,
-        widen_factor=[0.375, 0.5, 0.125, 0.375, 0.25, 0.375, 0.125, 0.125],
+        widen_factor=[0.375, 0.5, 0.375, 0.125, 0.25, 0.125, 0.25, 0.125],
         widen_factor_out=0.25,
         num_csp_blocks=1),
     bbox_head=dict(
@@ -102,7 +103,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=32,
+    samples_per_gpu=8,
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,

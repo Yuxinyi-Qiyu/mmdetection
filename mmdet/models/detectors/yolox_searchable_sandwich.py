@@ -1,6 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import random
-
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
@@ -58,7 +58,7 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
                  search_neck=True,
                  search_head=False,
                  sandwich=False,
-                 inplace=False, # distill
+                 inplace=None, # distill
                  kd_weight=1e-8, # 1e-3
                  ):
         super(YOLOX_Searchable_Sandwich, self).__init__(
@@ -181,6 +181,8 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
             self._input_size = self._random_resize()
         self._progress_in_iter += 1
 
+        self.archs = None
+
         return losses
 
     def _preprocess(self, img, gt_bboxes):
@@ -215,3 +217,12 @@ class YOLOX_Searchable_Sandwich(SingleStageDetector):
 
         input_size = (tensor[0].item(), tensor[1].item())
         return input_size
+    #
+    # def get_random_cand(self):
+    #     lambda: {
+    #         'widen_factor_backbone_idx': tuple(
+    #             [np.random.randint(0, len(self.widen_factor_range)) for i in range(5)]),
+    #         'deepen_factor_idx': tuple([np.random.randint(0, len(self.deepen_factor_range)) for i in range(4)]),
+    #         'widen_factor_neck_idx': tuple([np.random.randint(0, len(self.widen_factor_range)) for i in range(8)]),
+    #         'widen_factor_neck_out_idx': np.random.randint(0, len(self.widen_factor_range)),
+    #     }
