@@ -6,38 +6,19 @@ import torch.nn as nn
 from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
 from mmcv.runner import BaseModule
 
-from ..builder import NECKS
-from ..utils import CSPLayer
-from ..utils import USConv2d, USBatchNorm2d
+from mmdet.models.builder import NECKS
+from mmdet.models.utils import CSPLayer
+from mmdet.models.necks import YOLOXPAFPN
 
+# from ..utils.usconv import set_channel_ratio, make_divisible, set_channels
 
-@NECKS.register_module("YOLOXPAFPN_Searchable")
-class YOLOXPAFPN_Searchable(BaseModule):
-    """Path Aggregation Network used in YOLOX.
-
-    Args:
-        in_channels (List[int]): Number of input channels per scale.
-        out_channels (int): Number of output channels (used at each scale)
-        num_csp_blocks (int): Number of bottlenecks in CSPLayer. Default: 3
-        use_depthwise (bool): Whether to depthwise separable convolution in
-            blocks. Default: False
-        upsample_cfg (dict): Config dict for interpolate layer.
-            Default: `dict(scale_factor=2, mode='nearest')`
-        conv_cfg (dict, optional): Config dict for convolution layer.
-            Default: None, which means using conv2d.
-        norm_cfg (dict): Config dict for normalization layer.
-            Default: dict(type='BN')
-        act_cfg (dict): Config dict for activation layer.
-            Default: dict(type='Swish')
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Default: None.
-    """
-
+@NECKS.register_module()
+class YOLOXPAFPN_Searchable(YOLOXPAFPN):
     def __init__(self,
-                 in_channels,
-                 out_channels,
-                 widen_factor=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
-                 widen_factor_out=0.5,
+                 in_channels=[256, 512, 1024],
+                 out_channels=256,
+                 widen_factor=[0.5]*8,
+                 # widen_factor_out=0.5,
                  num_csp_blocks=3,
                  use_depthwise=False,
                  upsample_cfg=dict(scale_factor=2, mode='nearest'),
@@ -51,9 +32,9 @@ class YOLOXPAFPN_Searchable(BaseModule):
                      distribution='uniform',
                      mode='fan_in',
                      nonlinearity='leaky_relu')):
-        super(YOLOXPAFPN_Searchable, self).__init__(init_cfg)
+        BaseModule.__init__(self, init_cfg)
         self.widen_factor = widen_factor
-        self.widen_factor_out = widen_factor_out
+        # self.widen_factor_out = widen_factor_out
         self.in_channels = in_channels
         self.out_channels = out_channels
 
@@ -64,20 +45,15 @@ class YOLOXPAFPN_Searchable(BaseModule):
         self.reduce_layers = nn.ModuleList()
         self.top_down_blocks = nn.ModuleList()
 
-        self.base_out_channels = 256
-        new_out_channel = int(self.base_out_channels * self.widen_factor_out)
-        self.new_out_channel = new_out_channel
-
-        self.base_channels_backbone = [256, 512, 1024]
-        self.base_channels_dict = {  # 之前写错了
-            'reduce_layers0': 512,
-            'reduce_layers1': 256,
-            'top_down_blocks0': 512,
-            'top_down_blocks1': 256,
-            'downsamples0': 256,
-            'downsamples1': 512,
-            'bottom_up_blocks0': 512,
-            'bottom_up_blocks1': 1024
+        self.base_channels_dict = {
+            'reduce_layers0': in_channels[1],
+            'reduce_layers1': in_channels[0],
+            'top_down_blocks0': in_channels[1],
+            'top_down_blocks1': in_channels[0],
+            'downsamples0': in_channels[0],
+            'downsamples1': in_channels[1],
+            'bottom_up_blocks0': in_channels[1],
+            'bottom_up_blocks1': in_channels[2]
         }
         # create factor_dictionary
         self.widen_factor_dict = {
@@ -123,8 +99,8 @@ class YOLOXPAFPN_Searchable(BaseModule):
 
         # build top-down blocks
         for idx in range(len(in_channels) - 1, 0, -1):
-            layer_name_reduce = 'reduce_layers' + str(2 - idx)
-            layer_name_td = 'top_down_blocks' + str(2 - idx)
+            layer_name_reduce = 'reduce_layers' + str(len(in_channels) -1 - idx)
+            layer_name_td = 'top_down_blocks' + str(len(in_channels) -1 - idx)
             self.reduce_layers.append(
                 ConvModule(
                     channels_dict[layer_name_reduce][0],
@@ -182,7 +158,7 @@ class YOLOXPAFPN_Searchable(BaseModule):
             self.out_convs.append(
                 ConvModule(
                     out_convs_in_channel[i],
-                    new_out_channel,
+                    out_channels,
                     1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
@@ -191,23 +167,14 @@ class YOLOXPAFPN_Searchable(BaseModule):
     def set_arch(self, arch, **kwargs):
         # print("arch")
         # print(arch)
-        widen_factor_backbone = arch['widen_factor_backbone']
+        widen_factor_backbone = arch['widen_factor_backbone'][-len(self.in_channels):]
         in_channels = []
-        for i in range(len(self.in_channels)):
-            in_channels.append(int(self.base_channels_backbone[i] * widen_factor_backbone[i + 2]))
+        for c, alpha in zip(self.in_channels, widen_factor_backbone):
+            in_channels.append(int(c*alpha))
 
-        if 'widen_factor_neck_out' in arch and 'widen_factor_neck' in arch:
-            widen_factor_out_neck = arch['widen_factor_neck_out']
-            out_channels = int(self.base_out_channels * widen_factor_out_neck)
-            self.new_out_channel = out_channels
-            widen_factor = arch['widen_factor_neck']
-        else:
-            widen_factor = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-            out_channels = self.out_channels
+        out_channels = int(self.out_channels * arch['widen_factor_head'])
 
-
-
-
+        widen_factor = arch['widen_factor_neck']
         self.widen_factor_dict = {
             'reduce_layers0': widen_factor[0],
             'reduce_layers1': widen_factor[1],
@@ -267,16 +234,13 @@ class YOLOXPAFPN_Searchable(BaseModule):
             self.top_down_blocks[idx].final_conv.conv.in_channels = 2 * mid_channel
             self.top_down_blocks[idx].final_conv.conv.out_channels = channels_dict[layer_name_td][1]
             self.top_down_blocks[idx].final_conv.bn.num_features = channels_dict[layer_name_td][1]
-            darknetbottleneck = self.top_down_blocks[idx].blocks  # Sequential
-            num_blocks = 1
-            for block_num in range(num_blocks):
+
+            for block in self.top_down_blocks[idx].blocks:
                 hidden_channel = mid_channel
-                darknetbottleneck[block_num].conv1.conv.in_channels, darknetbottleneck[
-                    block_num].conv1.conv.out_channels = mid_channel, hidden_channel
-                darknetbottleneck[block_num].conv1.bn.num_features = hidden_channel
-                darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[
-                    block_num].conv2.conv.out_channels = hidden_channel, mid_channel
-                darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
+                block.conv1.conv.in_channels, block.conv1.conv.out_channels = mid_channel, hidden_channel
+                block.conv1.bn.num_features = hidden_channel
+                block.conv2.conv.in_channels, block.conv2.conv.out_channels = hidden_channel, mid_channel
+                block.conv2.bn.num_features = mid_channel
 
         for idx in range(len(self.in_channels) - 1):  # 0, 1
             layer_name_downsample = 'downsamples' + str(idx)
@@ -296,16 +260,13 @@ class YOLOXPAFPN_Searchable(BaseModule):
             self.bottom_up_blocks[idx].final_conv.conv.in_channels = 2 * mid_channel
             self.bottom_up_blocks[idx].final_conv.conv.out_channels = channels_dict[layer_name_bu][1]
             self.bottom_up_blocks[idx].final_conv.bn.num_features = channels_dict[layer_name_bu][1]
-            darknetbottleneck = self.bottom_up_blocks[idx].blocks  # Sequential
-            num_blocks = 1
-            for block_num in range(num_blocks):
-                hidden_channel = mid_channel  # 128
-                darknetbottleneck[block_num].conv1.conv.in_channels, darknetbottleneck[
-                    block_num].conv1.conv.out_channels = mid_channel, hidden_channel
-                darknetbottleneck[block_num].conv1.bn.num_features = hidden_channel
-                darknetbottleneck[block_num].conv2.conv.in_channels, darknetbottleneck[
-                    block_num].conv2.conv.out_channels = hidden_channel, mid_channel
-                darknetbottleneck[block_num].conv2.bn.num_features = mid_channel
+
+            for block in self.bottom_up_blocks[idx].blocks:
+                hidden_channel = mid_channel
+                block.conv1.conv.in_channels, block.conv1.conv.out_channels = mid_channel, hidden_channel
+                block.conv1.bn.num_features = hidden_channel
+                block.conv2.conv.in_channels, block.conv2.conv.out_channels = hidden_channel, mid_channel
+                block.conv2.bn.num_features = mid_channel
 
         # out_convs
         out_convs_in_channel = [channels_dict['top_down_blocks1'][1],
@@ -317,61 +278,50 @@ class YOLOXPAFPN_Searchable(BaseModule):
             self.out_convs[idx].conv.out_channels = out_channel
             self.out_convs[idx].bn.num_features = out_channel
 
-        # print("<<<<<<<<<<<<<<<<<<<<")
-        # print("self.reduce_layers")
-        # print(self.reduce_layers)
-        # print("self.top_down_blocks")
-        # print(self.top_down_blocks)
-        # print("self.downsamples")
-        # print(self.downsamples)
-        # print("self.bottom_up_blocks")
-        # print(self.bottom_up_blocks)
-        # print("self.out_convs")
-        # print(self.out_convs)
 
-    def forward(self, inputs):
-        """
-        Args:
-            inputs (tuple[Tensor]): input features.
-
-        Returns:
-            tuple[Tensor]: YOLOXPAFPN features.
-        """
-        assert len(inputs) == len(self.in_channels)
-        # print("top-down path")
-        # top-down path
-        inner_outs = [inputs[-1]]
-        for idx in range(len(self.in_channels) - 1, 0, -1):
-            feat_heigh = inner_outs[0]
-            feat_low = inputs[idx - 1]
-            feat_heigh = self.reduce_layers[len(self.in_channels) - 1 - idx](
-                feat_heigh)
-            inner_outs[0] = feat_heigh
-
-            upsample_feat = self.upsample(feat_heigh)
-
-            inner_out = self.top_down_blocks[len(self.in_channels) - 1 - idx](
-                torch.cat([upsample_feat, feat_low], 1))
-            inner_outs.insert(0, inner_out)
-
-        # print("bottom_up")
-        # bottom-up path
-        outs = [inner_outs[0]]
-        for idx in range(len(self.in_channels) - 1):
-            feat_low = outs[-1]
-            feat_height = inner_outs[idx + 1]
-            # print("!!!!!!!!downsamples:idx"+str(idx))
-            downsample_feat = self.downsamples[idx](feat_low)
-            out = self.bottom_up_blocks[idx](
-                torch.cat([downsample_feat, feat_height], 1))
-            outs.append(out)
-
-        # print("out_conv")
-        # out convs
-        for idx, conv in enumerate(self.out_convs):
-            outs[idx] = conv(outs[idx])
-            # print(outs[idx].size())
-        # print("finish_neck")
-
-        return tuple(outs)
-
+    # def forward(self, inputs):
+    #     """
+    #     Args:
+    #         inputs (tuple[Tensor]): input features.
+    #
+    #     Returns:
+    #         tuple[Tensor]: YOLOXPAFPN features.
+    #     """
+    #     assert len(inputs) == len(self.in_channels)
+    #     # print("top-down path")
+    #     # top-down path
+    #     inner_outs = [inputs[-1]]
+    #     for idx in range(len(self.in_channels) - 1, 0, -1):
+    #         feat_heigh = inner_outs[0]
+    #         feat_low = inputs[idx - 1]
+    #         feat_heigh = self.reduce_layers[len(self.in_channels) - 1 - idx](
+    #             feat_heigh)
+    #         inner_outs[0] = feat_heigh
+    #
+    #         upsample_feat = self.upsample(feat_heigh)
+    #
+    #         inner_out = self.top_down_blocks[len(self.in_channels) - 1 - idx](
+    #             torch.cat([upsample_feat, feat_low], 1))
+    #         inner_outs.insert(0, inner_out)
+    #
+    #     # print("bottom_up")
+    #     # bottom-up path
+    #     outs = [inner_outs[0]]
+    #     for idx in range(len(self.in_channels) - 1):
+    #         feat_low = outs[-1]
+    #         feat_height = inner_outs[idx + 1]
+    #         # print("!!!!!!!!downsamples:idx"+str(idx))
+    #         downsample_feat = self.downsamples[idx](feat_low)
+    #         out = self.bottom_up_blocks[idx](
+    #             torch.cat([downsample_feat, feat_height], 1))
+    #         outs.append(out)
+    #
+    #     # print("out_conv")
+    #     # out convs
+    #     for idx, conv in enumerate(self.out_convs):
+    #         outs[idx] = conv(outs[idx])
+    #         # print(outs[idx].size())
+    #     # print("finish_neck")
+    #
+    #     return tuple(outs)
+    #

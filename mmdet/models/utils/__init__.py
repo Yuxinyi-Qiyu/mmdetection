@@ -18,6 +18,7 @@ from .transformer import (DetrTransformerDecoder, DetrTransformerDecoderLayer,
                           DynamicConv, PatchEmbed, Transformer, nchw_to_nlc,
                           nlc_to_nchw)
 from .usconv import USBatchNorm2d, USConv2d
+from .csp_layer_searchable import CSPLayer_Searchable
 
 __all__ = [
     'ResLayer', 'gaussian_radius', 'gen_gaussian_target',
@@ -28,5 +29,5 @@ __all__ = [
     'SELayer', 'interpolate_as', 'ConvUpsample', 'CSPLayer',
     'adaptive_avg_pool2d', 'AdaptiveAvgPool2d', 'PatchEmbed', 'nchw_to_nlc',
     'nlc_to_nchw', 'pvt_convert', 'sigmoid_geometric_mean',
-    'preprocess_panoptic_gt', 'DyReLU', 'USBatchNorm2d', 'USConv2d'
+    'preprocess_panoptic_gt', 'DyReLU', 'USBatchNorm2d', 'USConv2d', 'CSPLayer_Searchable'
 ]
