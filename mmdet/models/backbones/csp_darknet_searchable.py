@@ -10,7 +10,7 @@ from torch.nn.modules.batchnorm import _BatchNorm, BatchNorm2d
 from ..utils.usconv import set_channel_ratio, set_channels
 from mmdet.models.builder import BACKBONES
 from mmdet.models.backbones.csp_darknet import Focus, SPPBottleneck, CSPDarknet
-from mmdet.models.utils import CSPLayer
+from mmdet.models.utils import CSPLayer, CSPLayer_Concat, CSPLayer_Searchable
 
 @BACKBONES.register_module()
 class CSPDarknet_Searchable(CSPDarknet):
@@ -94,7 +94,7 @@ class CSPDarknet_Searchable(CSPDarknet):
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg)
                 stage.append(spp)
-            csp_layer = CSPLayer(
+            csp_layer = CSPLayer_Concat(
                 out_channels,
                 out_channels,
                 num_blocks=num_blocks,
@@ -114,9 +114,10 @@ class CSPDarknet_Searchable(CSPDarknet):
         #     print(layer)
 
 
-    #
 
     def set_arch(self, arch, divisor=8):
+        # print("csp_darknet_set_arch")
+        # print(arch)
         widen_factor = [c for c in arch['widen_factor_backbone']]
         deepen_factor = [d for d in arch['deepen_factor_backbone']]
 
@@ -124,15 +125,20 @@ class CSPDarknet_Searchable(CSPDarknet):
 
         for i, layer_name in enumerate(self.layers):
             layer = getattr(self, layer_name)
+            # 这一步只是把每个stage的卷积通道进行相应倍率的变化
             set_channel_ratio(layer, widen_factor[i], divisor=divisor)
-            # ?
+
             if layer_name == "stem":
-                layer.conv.conv.in_channels = last_out
-                last_out = layer.conv.conv.out_channels
+                layer.conv.conv.in_channels = last_out # 输入channel不变，还是4*3=12
+                last_out = layer.conv.conv.out_channels # 记住stem输出的channel
             else:
                 layer[0].conv.in_channels = last_out
-                last_out = layer[-1].final_conv.bn.num_features
+                last_out = layer[-1].final_conv1.bn.num_features * 2
+            #     last_out = layer[-1].final_conv.bn.num_features
                 layer[-1].blocks.num_layers = round(len(layer[-1].blocks) * deepen_factor[i - 1])  # deepfactor
+            # print(self)
+        # print("after_set_arch")
+        # print(self)
 
         # for i, layer_name in enumerate(self.layers):
         #     layer = getattr(self, layer_name)

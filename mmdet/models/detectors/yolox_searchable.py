@@ -10,6 +10,8 @@ from ..builder import DETECTORS
 from mmdet.models.detectors.yolox import YOLOX
 from ..algorithm.searchbase import SearchBase
 
+from .kd_loss import *
+
 # from .single_stage import SingleStageDetector
 # from .kd_loss import *
 
@@ -22,6 +24,8 @@ class YOLOX_Searchable(SearchBase, YOLOX):
                  num_sample_training=4,
                  divisor=4,
                  retraining=False,
+                 # inplace=None,
+                 # kd_weight=1e-3,
                  **kwargs
                  ):
         YOLOX.__init__(self, *args, **kwargs)
@@ -34,29 +38,86 @@ class YOLOX_Searchable(SearchBase, YOLOX):
             self.deepen_factor_backbone_range = search_space['deepen_factor_backbone_range']
             self.widen_factor_neck_range = search_space['widen_factor_neck_range']
             self.widen_factor_head_range = search_space['widen_factor_head_range']
+        # self.inplace = inplace
+        # if self.inplace == 'L2':
+        #     self.kd_loss = DL2()
+        # elif self.inplace == 'L2Softmax':
+        #     self.kd_loss = DL2(softmax=True)
+        # elif self.inplace == 'DML':
+        #     self.kd_loss = DML()
+        # elif self.inplace == 'NonLocal':
+        #     self.out_channels = self.neck.out_channels
+        #     self.kd_loss = NonLocalBlockLoss(self.out_channels, 64)
 
     def sample_arch(self, mode='ramdom'): # ?
         assert mode in ('max', 'min', 'random')
         arch = {}
         if mode in ('max', 'min'):
             fn = eval(mode)
-            arch['widen_factor_backbone'] = tuple([fn(self.backbone_widen_factor_range)] * 5)
-            arch['deepen_factor_backbone'] = tuple([fn(self.backbone_deepen_factor_range)] * 4)
-            arch['widen_factor_neck'] = tuple([fn(self.neck_widen_factor_range)] * 8)
-            arch['widen_factor_head'] = max(self.head_widen_factor_range)
+            arch['widen_factor_backbone'] = tuple([fn(self.widen_factor_backbone_range)] * 5)
+            arch['deepen_factor_backbone'] = tuple([fn(self.deepen_factor_backbone_range)] * 4)
+            arch['widen_factor_neck'] = tuple([fn(self.widen_factor_neck_range)] * 8)
+            arch['widen_factor_head'] = max(self.widen_factor_head_range)
         elif mode == 'random':
-            arch['widen_factor_backbone'] = tuple(random.choices(self.backbone_widen_factor_range, k=5))
-            arch['deepen_factor_backbone'] = tuple(random.choices(self.backbone_deepen_factor_range, k=4))
-            arch['widen_factor_neck'] = tuple(random.choices(self.neck_widen_factor_range, k=8))
-            arch['widen_factor_head'] = random.choice(self.head_widen_factor_range)
+            arch['widen_factor_backbone'] = tuple(random.choices(self.widen_factor_backbone_range, k=5))
+            arch['deepen_factor_backbone'] = tuple(random.choices(self.deepen_factor_backbone_range, k=4))
+            arch['widen_factor_neck'] = tuple(random.choices(self.widen_factor_neck_range, k=8))
+            arch['widen_factor_head'] = random.choice(self.widen_factor_head_range)
         else:
             raise NotImplementedError
         return arch
 
     def set_arch(self, arch_dict):
-        self.backbone.set_arch(arch_dict) # divisor=self.divisor
-        self.neck.set_arch(arch_dict) # divisor=self.divisor
-        self.bbox_head.set_arch(arch_dict) # divisor=self.divisor
+        self.backbone.set_arch(arch_dict, divisor=self.divisor)
+        self.neck.set_arch(arch_dict, divisor=self.divisor)
+        self.bbox_head.set_arch(arch_dict, divisor=self.divisor)
+
+        # print(self)
+
+    # def forward_train(self,
+    #                   img,
+    #                   img_metas,
+    #                   gt_bboxes,
+    #                   gt_labels,
+    #                   gt_bboxes_ignore=None):
+    #     img, gt_bboxes = self._preprocess(img, gt_bboxes)
+    #
+    #     losses = dict()
+    #     if not isinstance(self.archs, list):  # not sandwich
+    #         self.archs = [self.arch]
+    #
+    #     for idx, arch in enumerate(self.archs):
+    #         self.set_arch(arch)
+    #
+    #         x = self.backbone(img)
+    #         x = self.neck(x)
+    #
+    #         if len(self.archs) > 1 and self.inplace:  # inplace distill
+    #             if idx == 0:  # 最大的子网
+    #                 teacher_feat = x
+    #             else:
+    #                 kd_feat_loss = 0
+    #                 student_feat = x
+    #                 for i in range(len(student_feat)):
+    #                     kd_feat_loss += self.kd_loss(student_feat[i], teacher_feat[i].detach(), i) * self.kd_weight
+    #
+    #                 losses.update({'kd_feat_loss_{}'.format(idx): kd_feat_loss})
+    #
+    #         head_loss = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
+    #                                                  gt_labels, gt_bboxes_ignore)
+    #
+    #         losses.update({'loss_cls_{}'.format(idx): head_loss['loss_cls']})
+    #         losses.update({'loss_bbox_{}'.format(idx): head_loss['loss_bbox']})
+    #         losses.update({'loss_obj_{}'.format(idx): head_loss['loss_obj']})
+    #
+    #     # random resizing
+    #     if (self._progress_in_iter + 1) % self._random_size_interval == 0:
+    #         self._input_size = self._random_resize()
+    #     self._progress_in_iter += 1
+    #
+    #     self.archs = None
+    #
+    #     return losses
 
     # def extract_feat(self, img):
     #     """Directly extract features from the backbone+neck."""

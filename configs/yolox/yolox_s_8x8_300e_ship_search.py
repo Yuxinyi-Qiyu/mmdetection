@@ -7,69 +7,19 @@ _base_ = [
 custom_imports=dict(imports=['mmdet.datasets', 'mmdet.models', 'mmcv_custom.runner'], allow_failed_imports=False)
 
 img_scale = (256, 320)
-
-find_unused_parameters=True
-optimizer = dict(
-    type='SGD',
-    lr=0.01,
-    momentum=0.9,
-    weight_decay=5e-4,
-    nesterov=True,
-    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
-optimizer_config = dict(grad_clip=None)
-
 max_epochs = 300
 num_last_epochs = 5
 resume_from = None
 interval = 50
-
-runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
-
-# learning policy
-lr_config = dict(
-    policy='YOLOX',
-    warmup='exp',
-    by_epoch=False,
-    warmup_by_epoch=True,
-    warmup_ratio=1,
-    warmup_iters=5,  # 5 epoch
-    num_last_epochs=num_last_epochs,
-    min_lr_ratio=0.05)
-
-custom_hooks = [
-    # dict(
-    #     type='YOLOXModeSwitchHook',
-    #     num_last_epochs=num_last_epochs,
-    #     priority=48),
-    dict(
-        type='SyncNormHook',
-        num_last_epochs=num_last_epochs,
-        interval=interval,
-        priority=48),
-    dict(
-        type='ExpMomentumEMAHook',
-        resume_from=resume_from,
-        momentum=0.0001,
-        priority=49)
-]
 checkpoint_config = dict(interval=interval)
-evaluation = dict(
-    save_best='auto',
-    # The evaluation interval is 'interval' when running epoch is
-    # less than ‘max_epochs - num_last_epochs’.
-    # The evaluation interval is 1 when running epoch is greater than
-    # or equal to ‘max_epochs - num_last_epochs’.
-    # interval=interval,
-    # interval=300,
-    interval=interval,
-    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
-    metric='mAP')
-log_config = dict(interval=10)
 
 default_widen_factor = 0.5
 default_deepen_factor = 0.33
+search = True
+sandwich = True
+# inplace = 'NonLocal' # 'L2Softmax'
 
-widen_factor_range = [0.125, 0.25, 0.375, 0.5] # [1/4, 2/4, 3/4, 1]
+widen_factor_range = [0.25, 0.5, 0.75, 1.0] # [1/4, 2/4, 3/4, 1]
 deepen_factor_range = [0.33] # [1/3, 2/3, 1]
 
 search_space = dict(
@@ -79,16 +29,31 @@ search_space = dict(
     widen_factor_head_range = widen_factor_range
 )
 
-widen_factor_backbone = [0.5]*5
-deepen_factor_backbone = [0.33]*4
-widen_factor_neck = [0.5]*8
-widen_factor_head = [0.5]*1
+widen_factor_backbone = [1.0]*5
+deepen_factor_backbone = [1.0]*4
+widen_factor_neck = [1.0]*8
+widen_factor_head = [1.0]*1
+# widen_factor_backbone = [0.5]*5
+# deepen_factor_backbone = [0.33]*4
+# widen_factor_neck = [0.5]*8
+# widen_factor_head = [0.5]*1
 
 #@todo
 widen_factor_backbone = [default_widen_factor*alpha for alpha in widen_factor_backbone]
 deepen_factor_backbone = [default_deepen_factor*alpha for alpha in deepen_factor_backbone]
 in_channels = [int(c*alpha) for c,alpha in zip([256, 512, 1024], widen_factor_backbone[-3:])]
 head_channels = int(256*default_widen_factor*widen_factor_head[0])
+
+find_unused_parameters=True
+
+optimizer = dict(
+    type='SGD',
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=5e-4,
+    nesterov=True,
+    paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
+optimizer_config = dict(grad_clip=None)
 
 # model settings
 model = dict(
@@ -130,6 +95,57 @@ model = dict(
     # In order to align the source code, the threshold of the val phase is
     # 0.01, and the threshold of the test phase is 0.001.
     test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.65)))
+
+# runner = dict(type='EpochBasedRunnerSuper', max_epochs=max_epochs,
+#               widen_factor_backbone_range=widen_factor_range,
+#               deepen_factor_backbone_range=deepen_factor_range,
+#               widen_factor_neck_range=widen_factor_range,
+#               widen_factor_head_range=widen_factor_range,
+#               search=search,
+#               sandwich=sandwich)
+
+runner = dict(type='EpochBasedRunner', max_epochs=max_epochs)
+
+# learning policy
+lr_config = dict(
+    policy='YOLOX',
+    warmup='exp',
+    by_epoch=False,
+    warmup_by_epoch=True,
+    warmup_ratio=1,
+    warmup_iters=5,  # 5 epoch
+    num_last_epochs=num_last_epochs,
+    min_lr_ratio=0.05)
+
+custom_hooks = [
+    # dict(
+    #     type='YOLOXModeSwitchHook',
+    #     num_last_epochs=num_last_epochs,
+    #     priority=48),
+    dict(
+        type='SyncNormHook',
+        num_last_epochs=num_last_epochs,
+        interval=interval,
+        priority=48),
+    dict(
+        type='ExpMomentumEMAHook',
+        resume_from=resume_from,
+        momentum=0.0001,
+        priority=49)
+]
+evaluation = dict(
+    save_best='auto',
+    # The evaluation interval is 'interval' when running epoch is
+    # less than ‘max_epochs - num_last_epochs’.
+    # The evaluation interval is 1 when running epoch is greater than
+    # or equal to ‘max_epochs - num_last_epochs’.
+    # interval=interval,
+    # interval=300,
+    interval=interval,
+    dynamic_intervals=[(max_epochs - num_last_epochs, 1)],
+    metric='mAP')
+log_config = dict(interval=10)
+
 #
 # # dataset settings
 # data_root = 'data/VOCdevkit/'

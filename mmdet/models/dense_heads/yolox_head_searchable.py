@@ -40,7 +40,7 @@ class YOLOXHead_Searchable(YOLOXHead):
         set_channels(self.multi_level_conv_obj, in_channels=feat_channels)
 
         for i, _ in enumerate(self.strides):
-            self.multi_level_cls_convs[i][0].conv.in_channels = in_channel
-            self.multi_level_reg_convs[i][0].conv.in_channels = in_channel
+            self.multi_level_cls_convs[i][0].conv.in_channels = in_channels
+            self.multi_level_reg_convs[i][0].conv.in_channels = in_channels
 
 

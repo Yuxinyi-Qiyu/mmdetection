@@ -172,26 +172,12 @@ def dict_to_tuple(arch):
     return cand_tuple
 
 
-def tuple_to_dict(self, cand_tuple):
-    print('tuple_to_dict!!!!!')
-    idx = 0
-    arch = {}
-    if self.search_backbone and self.search_channel:
-        idx += 5
-        arch['widen_factor_backbone_idx'] = cand_tuple[:idx]
-    # if self.search_backbone and self.search_depth: # todo
-    idx += 4
-    arch['deepen_factor_idx'] = cand_tuple[idx-4:idx]
-    if self.search_neck and self.search_channel:
-        idx += 8
-        arch['widen_factor_neck_idx'] = cand_tuple[idx-8:idx]
-        arch['widen_factor_neck_out_idx'] = cand_tuple[idx]
-    # arch = {'widen_factor_backbone_idx': cand_tuple[:5],
-    #         'deepen_factor_idx': cand_tuple[5:9],
-    #         'widen_factor_neck_idx': cand_tuple[9:17],
-    #         'widen_factor_neck_out_idx': cand_tuple[17]
-    #         }
-    print(self)
+def tuple_to_dict(cand_tuple):
+    arch = {'widen_factor_backbone_idx': cand_tuple[:5],
+            'deepen_factor_backbone_idx': cand_tuple[5:9],
+            'widen_factor_neck_idx': cand_tuple[9:17],
+            'widen_factor_head_idx': cand_tuple[17],
+            }
     return arch
 
 

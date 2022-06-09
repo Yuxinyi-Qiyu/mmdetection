@@ -35,13 +35,16 @@ class SearchBase:
     def modify_conv_forward(module): # conv类型变化
         """Modify the forward method of a conv layer."""
         def modified_forward(self, feature):
+            # print('here')   #? 怎么调用的
             assert self.groups == 1
+            # print(self.in_channels,self.out_channels)
+            # print(feature.size())
             weight = self.weight[:self.out_channels, :self.in_channels, :, :]
             if self.bias is not None:
                 bias = self.bias[:self.out_channels]
             else:
                 bias = self.bias
-            return self._conv_forward(feature, weight, bias)
+            return self._conv_forward(feature, weight) # , bias
 
         return MethodType(modified_forward, module)
         # 将modified forward方法绑定到module实例上
@@ -134,13 +137,17 @@ class SearchBase:
             module.forward = self.modify_seq_forward(module)
 
     def set_archs(self, archs, **kwargs):
+        # print("searchbase_set_archs")
         self.archs = archs
+        # print(self.archs)
 
     def set_arch(self, arch, **kwargs):
+        # print("searchbase_set_arch")
         self.arch = arch
         self.backbone.set_arch(self.arch)
         self.neck.set_arch(self.arch)
         self.bbox_head.set_arch(self.arch)
+        # print(self.arch)
 
     def train(self, mode=True):
         """Overwrite the train method in `nn.Module` to set `nn.BatchNorm` to

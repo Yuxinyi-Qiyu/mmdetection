@@ -205,7 +205,6 @@ class YOLOXHead(BaseDenseHead, BBoxTestMixin):
             tuple[Tensor]: A tuple of multi-level predication map, each is a
                 4D-tensor of shape (batch_size, 5+num_classes, height, width).
         """
-
         return multi_apply(self.forward_single, feats,
                            self.multi_level_cls_convs,
                            self.multi_level_reg_convs,

@@ -120,7 +120,11 @@ def set_channel_ratio(layer, ratio, divisor): # 修改通道
     for module in layer.modules():
         if isinstance(module, nn.Conv2d):
             # 可以整除divisor的通道数， weight一直不变
+            # print(module.weight.shape[1])
+            # print(ratio)
             module.in_channels = make_divisible(module.weight.shape[1]*ratio, divisor)
+            # print("module.in_channels")
+            # print(module.in_channels)
             module.out_channels = make_divisible(module.weight.shape[0]*ratio, divisor)
         if isinstance(module, _BatchNorm):
             module.num_features = make_divisible(module.weight.shape[0]*ratio, divisor)

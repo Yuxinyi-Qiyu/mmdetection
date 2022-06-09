@@ -37,8 +37,8 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
                  # search_head=False,
                  sandwich=False,
                  **kwargs):
-        self.widen_factor_backbone_range = widen_factor_backbone_range,
-        self.deepen_factor_backbone_range = deepen_factor_backbone_range,
+        self.widen_factor_backbone_range = widen_factor_backbone_range
+        self.deepen_factor_backbone_range = deepen_factor_backbone_range
         self.widen_factor_neck_range = widen_factor_neck_range
         self.widen_factor_head_range = widen_factor_head_range
         self.search = search
@@ -109,6 +109,9 @@ class EpochBasedRunnerSuper(EpochBasedRunner):
                     self.archs.append(self.get_cand_arch(min_arch=True))
                     self.archs.append(self.get_cand_arch())
                     self.archs.append(self.arch)
+                    print("runner_arch")
+                    print(self.archs)
+                    # self.model.module-->YOLOX_Searchable
                     self.model.module.set_archs(self.archs, **kwargs)
                 else:
                     self.model.module.set_arch(self.arch, **kwargs)
